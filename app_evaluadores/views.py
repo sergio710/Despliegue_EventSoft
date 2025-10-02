@@ -132,18 +132,48 @@ def agregar_item(request, eve_id):
     evento = get_object_or_404(Evento, pk=eve_id)    
     if request.method == 'POST':
         descripcion = request.POST.get('descripcion')
-        peso = float(request.POST.get('peso', 0))
-        peso_total_actual = sum(c.cri_peso for c in Criterio.objects.filter(cri_evento_fk=eve_id))        
+        peso_str = request.POST.get('peso', '0')
+
+        # Validaciones antes de crear el objeto
+        errores = []
+
+        if not descripcion or descripcion.strip() == '':
+            errores.append("La descripción del criterio es obligatoria.")
+        
+        try:
+            peso = float(peso_str)
+            if peso <= 0:
+                errores.append("El peso debe ser un número positivo.")
+        except ValueError:
+            errores.append("El peso debe ser un número válido.")
+
+        # Calcular peso total actual
+        peso_total_actual = sum(c.cri_peso for c in Criterio.objects.filter(cri_evento_fk=eve_id))
+
+        # Verificar límite de 100%
         if peso_total_actual + peso > 100:
-            messages.error(request, 'El peso total no puede exceder el 100%.')
-            return redirect('gestionar_items_evaluador', eve_id=eve_id)
+            errores.append('El peso total no puede exceder el 100%.')
+
+        if errores:
+            # Si hay errores, mostrarlos y volver al formulario
+            messages.error(request, " ".join(errores))
+            peso_restante = 100 - peso_total_actual
+            return render(request, 'agregar_item_evaluador.html', {
+                'evento': evento,
+                'peso_total_actual': peso_total_actual,
+                'peso_restante': peso_restante
+            })
+
+        # Si pasaron todas las validaciones, crear el criterio
         Criterio.objects.create(
-            cri_descripcion=descripcion,
+            cri_descripcion=descripcion.strip(), # Limpiar espacios
             cri_peso=peso,
             cri_evento_fk=evento
         )
         messages.success(request, 'Ítem agregado correctamente.')
         return redirect('gestionar_items_evaluador', eve_id=eve_id)
+
+    # Si es GET, mostrar formulario
     peso_total_actual = sum(c.cri_peso for c in Criterio.objects.filter(cri_evento_fk=eve_id))
     peso_restante = 100 - peso_total_actual
     return render(request, 'agregar_item_evaluador.html', {
