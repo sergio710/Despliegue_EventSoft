@@ -10,7 +10,8 @@
                     <th>Posición</th>
                     <th>Nombre del Participante</th>
                     <th>Correo</th>
-                    <th>Proyecto Grupal / Individual</th>
+                    <th>Tipo de participación</th>
+                    <th>Proyectos</th>
                     <th>Puntaje Total</th>
                 </tr>
             </thead>
@@ -34,8 +35,17 @@
                     <td>{{ p.participante.usuario.first_name }} {{ p.participante.usuario.last_name }}</td>
                     <td>{{ p.participante.usuario.email }}</td>
                     <td>
-                        {% if p.proyecto %}
-                            {{ p.proyecto.titulo }}
+                        {% if p.codigo %}
+                            Grupal
+                        {% else %}
+                            Individual
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if p.proyectos %}
+                            {% for pr in p.proyectos %}
+                                {{ pr.titulo }}{% if not forloop.last %} / {% endif %}
+                            {% endfor %}
                         {% else %}
                             Individual
                         {% endif %}
@@ -44,7 +54,7 @@
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="5" class="text-center">No hay participantes calificados aún.</td>
+                    <td colspan="6" class="text-center">No hay participantes calificados aún.</td>
                 </tr>
                 {% endfor %}
             </tbody>

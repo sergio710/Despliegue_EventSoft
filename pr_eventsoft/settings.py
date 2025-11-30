@@ -1,5 +1,7 @@
 from pathlib import Path
 import os
+import pymysql
+pymysql.install_as_MySQLdb()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -141,5 +143,5 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'correosdjango073@gmail.com'
-EMAIL_HOST_PASSWORD = 'rxxd fsng xrba qtmm '
+EMAIL_HOST_PASSWORD = 'rxxdfsngxrbaqtmm'
 DEFAULT_FROM_EMAIL = 'correosdjango073@gmail.com'

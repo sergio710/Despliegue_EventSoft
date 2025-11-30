@@ -47,7 +47,11 @@
                         {% endif %}
                     </td>
                     <td>
-                        <button type="button" class="btn btn-info" data-bs-toggle="collapse" data-bs-target="#detalles-{{ p.participante.par_id }}" aria-expanded="false" aria-controls="detalles-{{ p.participante.par_id }}">
+                        <button type="button" class="btn btn-info"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#detalles-{{ p.participante.par_id }}"
+                                aria-expanded="false"
+                                aria-controls="detalles-{{ p.participante.par_id }}">
                             Ver Detalles
                         </button>
                     </td>
@@ -61,6 +65,7 @@
                                         <th>Evaluador</th>
                                         <th>Criterio</th>
                                         <th>Calificación</th>
+                                        <th>Observaciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -69,6 +74,13 @@
                                         <td>{{ calificacion.evaluador.usuario.first_name }} {{ calificacion.evaluador.usuario.last_name }}</td>
                                         <td>{{ calificacion.criterio.cri_descripcion }}</td>
                                         <td>{{ calificacion.cal_valor }}</td>
+                                        <td>
+                                            {% if calificacion.cal_observacion %}
+                                                {{ calificacion.cal_observacion }}
+                                            {% else %}
+                                                <span class="text-muted">No hay observaciones para este criterio.</span>
+                                            {% endif %}
+                                        </td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>

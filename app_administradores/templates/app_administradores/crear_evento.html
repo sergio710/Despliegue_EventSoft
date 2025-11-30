@@ -66,62 +66,114 @@
         margin-top: 1.2rem;
         margin-bottom: 0.7rem;
     }
+    .alert-in-form {
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        font-size: 0.95rem;
+    }
+    .archivo-seleccionado {
+        background: #f0f9ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 6px;
+        padding: 0.5rem;
+        margin-top: 0.5rem;
+        font-size: 0.9rem;
+        color: #1e40af;
+    }
 </style>
+
 <div class="modern-card">
-        <h2>Crear Nuevo Evento</h2>
-        <p class="form-text text-center mb-4">Completa los datos para crear un evento. Los campos marcados con <span style="color:#3182ce">*</span> son obligatorios.</p>
-        <form action="{% url 'crear_evento' %}" method="post" enctype="multipart/form-data" autocomplete="off">
-                {% csrf_token %}
+    <h2>Crear Nuevo Evento</h2>
+    <p class="form-text text-center mb-4">Completa los datos para crear un evento. Los campos marcados con <span style="color:#3182ce">*</span> son obligatorios.</p>
+    
+    <!-- ✅ MENSAJES DENTRO DEL FORMULARIO -->
+    {% if mostrar_mensajes_en_formulario %}
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show alert-in-form" role="alert">
+                    ...
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endif %}
 
-                <div class="section-title">Información general</div>
-                <div class="mb-3">
-                        <label class="form-label">Nombre <span style="color:#3182ce">*</span></label>
-                        <input type="text" name="nombre" class="form-control" required placeholder="Ej: Congreso Nacional de Ciencia">
-                </div>
-                <div class="mb-3">
-                        <label class="form-label">Descripción <span style="color:#3182ce">*</span></label>
-                        <textarea name="descripcion" class="form-control" rows="3" required placeholder="Describe brevemente el evento"></textarea>
-                </div>
-                <div class="row">
-                        <div class="col-md-6 mb-3">
-                                <label class="form-label">Ciudad <span style="color:#3182ce">*</span></label>
-                                <input type="text" name="ciudad" class="form-control" required placeholder="Ej: Bogotá">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                                <label class="form-label">Lugar <span style="color:#3182ce">*</span></label>
-                                <input type="text" name="lugar" class="form-control" required placeholder="Ej: Centro de Convenciones">
-                        </div>
-                </div>
-                <div class="row">
-                        <div class="col-md-6 mb-3">
-                                <label class="form-label">Fecha Inicio <span style="color:#3182ce">*</span></label>
-                                <input type="date" name="fecha_inicio" class="form-control" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                                <label class="form-label">Fecha Fin <span style="color:#3182ce">*</span></label>
-                                <input type="date" name="fecha_fin" class="form-control" required>
-                        </div>
-                </div>
-                <div class="mb-3">
-                        <label class="form-label">Capacidad <span style="color:#3182ce">*</span></label>
-                        <input type="number" name="capacidad" class="form-control" required min="1" placeholder="Ej: 200">
-                        <div class="form-text">Número máximo de asistentes permitidos.</div>
-                </div>
-                <div class="row">
-                        <div class="col-md-6 mb-3">
-                                <label class="form-label">¿Tiene Costo? <span style="color:#3182ce">*</span></label>
-                                <select name="tienecosto" class="form-select" required>
-                                        <option value="SI">Sí</option>
-                                        <option value="NO">No</option>
-                                </select>
-                                <div class="form-text">Selecciona "Sí" si el evento requiere pago para inscribirse.</div>
-                        </div>
-                </div>
 
-                <div class="section-title">Áreas y Categorías</div>
-                <div class="mb-3">
-                        <label class="form-label">Áreas y Categorías <span style="color:#3182ce">*</span></label>
-                        <div id="areaCategoriaContainer">
+    <form action="{% url 'crear_evento' %}" method="post" enctype="multipart/form-data" autocomplete="off">
+        {% csrf_token %}
+
+        <div class="section-title">Información general</div>
+        <div class="mb-3">
+            <label class="form-label">Nombre <span style="color:#3182ce">*</span></label>
+            <input type="text" name="nombre" class="form-control" required placeholder="Ej: Congreso Nacional de Ciencia" value="{{ datos.nombre|default:'' }}">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Descripción <span style="color:#3182ce">*</span></label>
+            <textarea name="descripcion" class="form-control" rows="3" required placeholder="Describe brevemente el evento">{{ datos.descripcion|default:'' }}</textarea>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Ciudad <span style="color:#3182ce">*</span></label>
+                <input type="text" name="ciudad" class="form-control" required placeholder="Ej: Bogotá" value="{{ datos.ciudad|default:'' }}">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Lugar <span style="color:#3182ce">*</span></label>
+                <input type="text" name="lugar" class="form-control" required placeholder="Ej: Centro de Convenciones" value="{{ datos.lugar|default:'' }}">
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Fecha Inicio <span style="color:#3182ce">*</span></label>
+                <input type="date" name="fecha_inicio" class="form-control" required value="{{ datos.fecha_inicio|default:'' }}">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Fecha Fin <span style="color:#3182ce">*</span></label>
+                <input type="date" name="fecha_fin" class="form-control" required value="{{ datos.fecha_fin|default:'' }}">
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Capacidad <span style="color:#3182ce">*</span></label>
+            <input type="number" name="capacidad" class="form-control" required min="1" placeholder="Ej: 200" value="{{ datos.capacidad|default:'' }}">
+            <div class="form-text">Número máximo de asistentes permitidos.</div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">¿Tiene Costo? <span style="color:#3182ce">*</span></label>
+                <select name="tienecosto" class="form-select" required>
+                    <option value="SI" {% if datos.tienecosto == 'SI' %}selected{% endif %}>Sí</option>
+                    <option value="NO" {% if datos.tienecosto == 'NO' %}selected{% endif %}>No</option>
+                </select>
+                <div class="form-text">Selecciona "Sí" si el evento requiere pago para inscribirse.</div>
+            </div>
+        </div>
+
+        <div class="section-title">Áreas y Categorías</div>
+        <div class="mb-3">
+            <label class="form-label">Áreas y Categorías <span style="color:#3182ce">*</span></label>
+            <div id="areaCategoriaContainer">
+                {% if datos.areas_categorias %}
+                    {% for ac in datos.areas_categorias %}
+                    <div class="row mb-2 area-categoria-item align-items-end">
+                        <div class="col-md-5">
+                            <select class="form-select area-select" required data-area-id="{{ ac.area_id }}">
+                                <option value="">Seleccione un área</option>
+                                {% for area in areas %}
+                                    <option value="{{ area.are_codigo }}" {% if area.are_codigo == ac.area_id %}selected{% endif %}>{{ area.are_nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-5">
+                            <select name="categoria_id[]" class="form-select categoria-select" required data-categoria-id="{{ ac.categoria_id }}">
+                                <option value="{{ ac.categoria_id }}" selected>{{ ac.categoria_nombre }}</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button type="button" class="btn btn-outline-danger btn-remove">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
                 <div class="row mb-2 area-categoria-item align-items-end">
                     <div class="col-md-5">
                         <select class="form-select area-select" required>
@@ -142,24 +194,37 @@
                         </button>
                     </div>
                 </div>
+                {% endif %}
             </div>
             <button type="button" class="btn btn-secondary mt-2" id="agregarAreaCategoria">Agregar otra categoría</button>
         </div>
 
         <!-- Archivos -->
         <div class="mb-3">
-            <label class="form-label">Imagen del Evento</label>
-            <input type="file" name="imagen" accept="image/*" class="form-control" required>
+            <label class="form-label">Imagen del Evento (Opcional)</label>
+            <input type="file" name="imagen" accept="image/*" class="form-control" id="inputImagen">
+            {% if datos.imagen_nombre %}
+                <div class="archivo-seleccionado">
+                    <i class="bi bi-image"></i> Archivo seleccionado: <strong>{{ datos.imagen_nombre }}</strong>
+                </div>
+            {% endif %}
+            <div class="form-text">Formatos permitidos: JPG, PNG, GIF</div>
         </div>
 
         <div class="mb-3">
-            <label class="form-label">Archivo de Programación (PDF)</label>
-            <input type="file" name="programacion" accept=".pdf" class="form-control" required>
+            <label class="form-label">Archivo de Programación (PDF) (Opcional)</label>
+            <input type="file" name="programacion" accept=".pdf" class="form-control" id="inputProgramacion">
+            {% if datos.programacion_nombre %}
+                <div class="archivo-seleccionado">
+                    <i class="bi bi-file-earmark-pdf"></i> Archivo seleccionado: <strong>{{ datos.programacion_nombre }}</strong>
+                </div>
+            {% endif %}
+            <div class="form-text">Solo archivos PDF</div>
         </div>
 
         <div class="d-flex justify-content-between mt-4">
             <a href="{% url 'dashboard_adminevento' %}" class="btn btn-outline-secondary">⬅️ Volver</a>
-            <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+            <button type="submit" class="btn btn-primary">Crear Evento</button>
         </div>
     </form>
 </div>
@@ -168,7 +233,7 @@
 <script>
     const obtenerCategoriasUrl = "{% url 'obtener_categorias_por_area' 0 %}".replace('/0/', '/');
 
-    function cargarCategorias(areaSelect, categoriaSelect) {
+    function cargarCategorias(areaSelect, categoriaSelect, categoriaPreseleccionada = null) {
         const areaId = areaSelect.value;
         if (!areaId) return;
 
@@ -177,7 +242,8 @@
             .then(data => {
                 categoriaSelect.innerHTML = '<option value="">Seleccione una categoría</option>';
                 data.forEach(cat => {
-                    categoriaSelect.innerHTML += `<option value="${cat.cat_codigo}">${cat.cat_nombre}</option>`;
+                    const selected = categoriaPreseleccionada && cat.cat_codigo == categoriaPreseleccionada ? 'selected' : '';
+                    categoriaSelect.innerHTML += `<option value="${cat.cat_codigo}" ${selected}>${cat.cat_nombre}</option>`;
                 });
             });
     }
@@ -203,12 +269,29 @@
 
     document.getElementById('agregarAreaCategoria').addEventListener('click', function () {
         const container = document.getElementById('areaCategoriaContainer');
-        const nuevoItem = container.querySelector('.area-categoria-item').cloneNode(true);
-
-        nuevoItem.querySelector('.area-select').value = '';
-        nuevoItem.querySelector('.categoria-select').innerHTML = '<option value="">Seleccione una categoría</option>';
+        const nuevoItem = document.createElement('div');
+        nuevoItem.className = 'row mb-2 area-categoria-item align-items-end';
+        nuevoItem.innerHTML = `
+            <div class="col-md-5">
+                <select class="form-select area-select" required>
+                    <option value="">Seleccione un área</option>
+                    {% for area in areas %}
+                        <option value="{{ area.are_codigo }}">{{ area.are_nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <select name="categoria_id[]" class="form-select categoria-select" required>
+                    <option value="">Seleccione una categoría</option>
+                </select>
+            </div>
+            <div class="col-md-2 text-end">
+                <button type="button" class="btn btn-outline-danger btn-remove">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        `;
         container.appendChild(nuevoItem);
-
         actualizarVisibilidadBotones();
     });
 
@@ -223,8 +306,22 @@
         }
     });
 
-    // Ejecutar al cargar
-    document.addEventListener('DOMContentLoaded', actualizarVisibilidadBotones);
+    // Cargar categorías preseleccionadas al inicio
+    document.addEventListener('DOMContentLoaded', function() {
+        actualizarVisibilidadBotones();
+        
+        // Cargar categorías para áreas preseleccionadas
+        document.querySelectorAll('.area-categoria-item').forEach(item => {
+            const areaSelect = item.querySelector('.area-select');
+            const categoriaSelect = item.querySelector('.categoria-select');
+            const areaId = areaSelect.dataset.areaId;
+            const categoriaId = categoriaSelect.dataset.categoriaId;
+            
+            if (areaId && categoriaId) {
+                cargarCategorias(areaSelect, categoriaSelect, categoriaId);
+            }
+        });
+    });
 </script>
 
 {% endblock %}

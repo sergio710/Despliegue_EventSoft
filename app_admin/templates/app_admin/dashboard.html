@@ -1,6 +1,5 @@
 {% extends 'base.html' %}
 {% load static %}
-{% load evento_filters %}
 
 {% block content %}
 <style>
@@ -109,44 +108,31 @@
     <h1 class="section-title text-center">Panel Administrador</h1>
 
     <div class="row">
-        {% for estado, color, icono in estados_tarjetas %}
+        {% for item in estados_tarjetas %}
         <div class="col-md-4 mb-4">
             <div class="card dashboard-card">
                 <div class="card-body">
                     <h5 class="card-title">
-                        <span class="icon-circle"><i class="bi {{ icono }}"></i></span>
-                        {{ estado }}
+                        <span class="icon-circle"><i class="bi {{ item.icono }}"></i></span>
+                        {{ item.estado }}
                     </h5>
                     <div class="form-text mb-2" style="font-size:0.98em; color:#2563eb;">
-                        {% if estado == 'Pendiente' %}Eventos que requieren revisión y aprobación.{% endif %}
-                        {% if estado == 'Aprobado' %}Eventos activos y disponibles para gestión.{% endif %}
-                        {% if estado == 'Inscripciones Cerradas' %}Eventos que ya no aceptan inscripciones.{% endif %}
-                        {% if estado == 'Finalizado' %}Eventos que han concluido.{% endif %}
-                        {% if estado == 'Rechazado' %}Eventos que no fueron aprobados.{% endif %}
+                        {% if item.estado == 'Pendiente' %}Eventos que requieren revisión y aprobación.{% endif %}
+                        {% if item.estado == 'Aprobado' %}Eventos activos y disponibles para gestión.{% endif %}
+                        {% if item.estado == 'Inscripciones Cerradas' %}Eventos que ya no aceptan inscripciones.{% endif %}
+                        {% if item.estado == 'Finalizado' %}Eventos que han concluido.{% endif %}
+                        {% if item.estado == 'Rechazado' %}Eventos que no fueron aprobados.{% endif %}
                     </div>
-                    {% if notificaciones|get:estado %}
+                    {% if item.notificaciones %}
                         <span class="badge-notif">
-                            {{ notificaciones|get:estado }} nuevo{{ notificaciones|get:estado|pluralize }}
+                            {{ item.notificaciones }} nuevo{{ item.notificaciones|pluralize }}
                         </span>
                     {% endif %}
-                    <a href="{% url 'listar_eventos_estado' estado %}" class="stretched-link"></a>
+                    <a href="{% url 'listar_eventos_estado' item.estado %}" class="stretched-link"></a>
                 </div>
             </div>
         </div>
         {% endfor %}
-
-        <div class="col-md-4 mb-4">
-            <div class="card dashboard-card">
-                <div class="card-body">
-                    <h5 class="card-title">
-                        <span class="icon-circle bg-secondary"><i class="bi bi-person-plus"></i></span>
-                        Crear Administrador de Evento
-                    </h5>
-                    <div class="form-text mb-2" style="font-size:0.98em; color:#2563eb;">Registra un nuevo usuario con permisos de administración de eventos.</div>
-                    <a href="{% url 'crear_administrador_evento' %}" class="stretched-link"></a>
-                </div>
-            </div>
-        </div>
 
         <div class="col-md-4 mb-4">
             <div class="card dashboard-card">
@@ -223,7 +209,7 @@
                         Manual Técnico y de Operación
                     </h5>
                     <div class="form-text mb-2" style="font-size:0.98em; color:#2563eb;">
-                        Consulta el manual técnico y de operación del sistema EventoSoft.
+                        Consulta el manual técnico y de operación del sistema EventSoft.
                     </div>
                     <a href="{% url 'manual_tecnico_operacion' %}" class="stretched-link" target="_blank"></a>
                 </div>
@@ -242,7 +228,7 @@
             <div class="toast-header text-white" style="background: #007832; border-bottom: 1px solid #39A900;">
                 <i class="bi bi-info-circle-fill me-2" style="font-size:1.2rem;"></i>
                 <strong class="me-auto">Notificación</strong>
-                <small>EventoSoft</small>
+                <small>EventSoft</small>
                 <button type="button" class="btn-close btn-close-white ms-2 mb-1" data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
             <div class="d-flex">

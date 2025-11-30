@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="text-center mb-5">
+        <h2 class="fw-bold mb-3">Proyectos del evento</h2>
+        <p class="text-muted">
+            Proyectos en los que participas en {{ evento.eve_nombre }}
+        </p>
+    </div>
+
+    {% if proyectos %}
+        <div class="row">
+            {% for proyecto in proyectos %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card shadow-sm border-0 rounded-4 h-100">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <h5 class="card-title fw-bold mb-0">{{ proyecto.titulo }}</h5>
+                            <span class="badge 
+                                {% if proyecto.estado == 'Aprobado' %}bg-success
+                                {% elif proyecto.estado == 'Pendiente' %}bg-warning text-dark
+                                {% elif proyecto.estado == 'Rechazado' %}bg-danger
+                                {% else %}bg-secondary{% endif %}">
+                                {{ proyecto.estado }}
+                            </span>
+                        </div>
+
+                        {% if proyecto.descripcion %}
+                            <p class="card-text text-truncate mb-3" style="max-height: 3em; overflow: hidden;">
+                                {{ proyecto.descripcion }}
+                            </p>
+                        {% endif %}
+
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <small class="text-muted">
+                                <i class="bi bi-calendar-event"></i>
+                                {{ proyecto.fecha_subida|date:"d/m/Y" }}
+                            </small>
+                        </div>
+
+                        <div class="d-flex flex-wrap gap-2">
+                            <!-- Ver detalles SIEMPRE -->
+                            <a href="{% url 'detalle_proyecto' proyecto.id %}" 
+                               class="btn btn-outline-primary btn-sm flex-grow-1">
+                                <i class="bi bi-eye"></i> Ver detalles
+                            </a>
+
+                            {% if es_lider %}
+                                <!-- Solo el creador ve estos botones -->
+                                <a href="{% url 'editar_proyecto_participante' evento.eve_id proyecto.id %}"
+                                   class="btn btn-warning btn-sm flex-grow-1">
+                                    <i class="bi bi-pencil-square"></i> Editar
+                                </a>
+
+                                <a href="{% url 'eliminar_proyecto_participante' evento.eve_id proyecto.id %}"
+                                   class="btn btn-danger btn-sm flex-grow-1">
+                                    <i class="bi bi-trash"></i> Eliminar
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="text-center py-5">
+            <div class="mb-4">
+                <i class="bi bi-folder2-open text-muted" style="font-size: 4rem;"></i>
+            </div>
+            <h4 class="text-muted mb-3">No tienes proyectos registrados en este evento</h4>
+            <p class="text-muted mb-4">
+                Los proyectos aparecerán aquí cuando te inscribas como participante con proyecto.
+            </p>
+        </div>
+    {% endif %}
+
+    <div class="d-flex justify-content-center mt-4 mb-4">
+        <a href="{% url 'dashboard_participante_evento' evento.eve_id %}"
+           class="btn btn-outline-secondary rounded-pill px-4 py-2">
+            <i class="bi bi-arrow-left-circle me-2"></i> Volver al dashboard del evento
+        </a>
+    </div>
+</div>
+{% endblock %}

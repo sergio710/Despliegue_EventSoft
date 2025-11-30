@@ -18,13 +18,14 @@ class CodigoInvitacionAdminEvento(models.Model):
     ]
     codigo = models.CharField(max_length=32, unique=True, default=uuid.uuid4, editable=False)
     email_destino = models.EmailField()
+    usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE, null=True, blank=True, related_name='codigos_creados')
     limite_eventos = models.PositiveIntegerField(default=1)
     fecha_creacion = models.DateTimeField(default=timezone.now)
     fecha_expiracion = models.DateTimeField()
     fecha_uso = models.DateTimeField(null=True, blank=True)
     estado = models.CharField(max_length=12, choices=ESTADOS, default='activo')
     tiempo_limite_creacion = models.DateTimeField(null=True, blank=True)
-    usuario_asignado = models.ForeignKey(Usuario, null=True, blank=True, on_delete=models.SET_NULL)
+    usuario_asignado = models.ForeignKey(Usuario, null=True, blank=True, on_delete=models.SET_NULL, related_name='codigos_asignados')
 
     def __str__(self):
         return f"Código {self.codigo} para {self.email_destino} ({self.estado})"

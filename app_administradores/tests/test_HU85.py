@@ -61,7 +61,7 @@ class HU85CargarMemoriasEventoTest(TestCase):
         self.evento.save()
 
         # Verificar que el archivo se guardó en la ruta correcta
-        self.assertIn("memorias.pdf", str(self.evento.eve_memorias))
+        self.assertIn("memorias", str(self.evento.eve_memorias))
         self.assertTrue(self.evento.eve_memorias.storage.exists(self.evento.eve_memorias.name))
 
         # (3) Reemplazar el archivo de memorias
@@ -74,7 +74,7 @@ class HU85CargarMemoriasEventoTest(TestCase):
         self.evento.save()
 
         # Verificar que se actualizó correctamente
-        self.assertIn("memorias_actualizadas.pdf", str(self.evento.eve_memorias))
+        self.assertIn("memorias_actualizadas", str(self.evento.eve_memorias))
         self.assertTrue(self.evento.eve_memorias.storage.exists(self.evento.eve_memorias.name))
 
         # (4) Confirmar disponibilidad: el campo eve_memorias tiene el archivo

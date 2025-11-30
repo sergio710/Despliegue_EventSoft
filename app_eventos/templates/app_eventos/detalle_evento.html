@@ -462,6 +462,12 @@
                 Compartir evento
             </button>
 
+            <button type="button" class="btn-custom btn-outline-success-custom" data-bs-toggle="modal"
+                    data-bs-target="#modalSolicitudAcceso">
+                <i class="bi bi-envelope"></i>
+                Solicitud acceso al evento
+            </button>
+
             <div class="info-box">
                 <h6>
                     <i class="bi bi-info-circle"></i> Como asistente:
@@ -513,6 +519,43 @@
                         <i class="bi bi-twitter-x me-2"></i>X (Twitter)
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Solicitud de Acceso -->
+<div class="modal fade" id="modalSolicitudAcceso" tabindex="-1"
+     aria-labelledby="modalSolicitudAccesoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalSolicitudAccesoLabel">
+                    <i class="bi bi-envelope me-2"></i>Solicitud de acceso al evento
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Asunto (puedes incluir tu correo aquí)</label>
+                    <input type="text" id="solicitudAsunto" class="form-control"
+                           placeholder="Ej: Juan Perez - Solicitud como evaluador">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Mensaje</label>
+                    <textarea id="solicitudCuerpo" class="form-control" rows="6"
+                              placeholder="Escribe aquí tu solicitud de acceso..."></textarea>
+                </div>
+                <div class="text-muted" id="solicitudFeedback" style="font-size: 0.85rem;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary"
+                        data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-primary"
+                        onclick="enviarSolicitudAcceso()">
+                    Enviar solicitud
+                </button>
             </div>
         </div>
     </div>
@@ -619,6 +662,60 @@ function compartirXVisitante() {
     } else {
         alert('Error: No hay información para compartir. Por favor intenta de nuevo.');
     }
+}
+
+function enviarSolicitudAcceso() {
+    const asunto = document.getElementById('solicitudAsunto').value.trim();
+    const cuerpo = document.getElementById('solicitudCuerpo').value.trim();
+    const feedback = document.getElementById('solicitudFeedback');
+    
+    // ID de evento renderizado por Django
+    const eventoId = "{{ evento.eve_id }}";
+
+    if (!asunto || !cuerpo) {
+        feedback.textContent = 'Por favor completa asunto y mensaje.';
+        feedback.classList.remove('text-success');
+        feedback.classList.add('text-danger');
+        return;
+    }
+
+    feedback.textContent = 'Enviando solicitud...';
+    feedback.classList.remove('text-danger');
+    feedback.classList.add('text-muted');
+
+    fetch(`/evento/${eventoId}/solicitar-acceso/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: new URLSearchParams({
+            'asunto': asunto,
+            'cuerpo': cuerpo
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            feedback.textContent = 'Solicitud enviada correctamente. Los administradores revisarán tu mensaje.';
+            feedback.classList.remove('text-danger');
+            feedback.classList.add('text-success');
+
+            // limpiar campos
+            document.getElementById('solicitudAsunto').value = '';
+            document.getElementById('solicitudCuerpo').value = '';
+        } else {
+            feedback.textContent = data.error || 'No se pudo enviar la solicitud.';
+            feedback.classList.remove('text-success');
+            feedback.classList.add('text-danger');
+        }
+    })
+    .catch(() => {
+        feedback.textContent = 'Error al enviar la solicitud. Inténtalo de nuevo.';
+        feedback.classList.remove('text-success');
+        feedback.classList.add('text-danger');
+    });
 }
 </script>
 

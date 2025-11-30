@@ -3,12 +3,14 @@
 {% block content %}
 <div class="container mt-5">
 
+    <!-- Título y lugar -->
     <div class="text-center mb-4">
         <h1 class="display-5 fw-bold">{{ evento.eve_nombre }}</h1>
         <p class="text-muted">{{ evento.eve_ciudad }} - {{ evento.eve_lugar }}</p>
     </div>
 
     <div class="row">
+        <!-- Columna izquierda: descripción y detalles -->
         <div class="col-md-8">
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
@@ -21,15 +23,24 @@
                 <div class="card-body">
                     <h5 class="card-title">Detalles del Evento</h5>
                     <ul class="list-group list-group-flush">
-                        <li class="list-group-item"><strong>Fecha:</strong> {{ evento.eve_fecha_inicio }} a {{ evento.eve_fecha_fin }}</li>
-                        <li class="list-group-item"><strong>Estado:</strong> {{ evento.eve_estado }}</li>
-                        <li class="list-group-item"><strong>Capacidad:</strong> {{ evento.eve_capacidad }} personas</li>
-                        <li class="list-group-item"><strong>¿Tiene costo?:</strong> {{ evento.tiene_costo_legible }}</li>
+                        <li class="list-group-item">
+                            <strong>Fecha:</strong> {{ evento.eve_fecha_inicio }} a {{ evento.eve_fecha_fin }}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Estado:</strong> {{ evento.eve_estado }}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Capacidad:</strong> {{ evento.eve_capacidad }} personas
+                        </li>
+                        <li class="list-group-item">
+                            <strong>¿Tiene costo?:</strong> {{ evento.tiene_costo_legible }}
+                        </li>
                     </ul>
                 </div>
             </div>
         </div>
 
+        <!-- Columna derecha: categorías y admin -->
         <div class="col-md-4">
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
@@ -53,26 +64,56 @@
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
                     <h5 class="card-title">Administrador</h5>
-                    <p><strong>{{ evento.adm_nombre }}</strong><br>
-                    <small class="text-muted">{{ evento.adm_correo }}</small></p>
+                    <p>
+                        <strong>{{ evento.adm_nombre }}</strong><br>
+                        <small class="text-muted">{{ evento.adm_correo }}</small>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Bloque de descargas -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Material del evento</h5>
+
+                    {% if evento.eve_programacion %}
+                        <a href="{{ evento.eve_programacion.url }}" target="_blank"
+                           class="btn btn-primary mb-2 w-100">
+                            <i class="bi bi-calendar-week"></i> Descargar Programación
+                        </a>
+                    {% endif %}
+
+                    {% if evento.eve_informacion_tecnica %}
+                        <a href="{% url 'descargar_informacion_tecnica_participante' evento.eve_id %}"
+                           class="btn btn-outline-primary mb-2 w-100">
+                            <i class="bi bi-file-earmark-text"></i> Descargar Información Técnica
+                        </a>
+                    {% endif %}
+
+                    {% if evento.eve_memorias %}
+                        <a href="{% url 'descargar_memorias_participante' evento.eve_id %}"
+                           class="btn btn-success mb-2 w-100">
+                            <i class="bi bi-journal-arrow-down"></i> Descargar Memorias
+                        </a>
+                    {% endif %}
+
+                    {% if not evento.eve_programacion and not evento.eve_informacion_tecnica and not evento.eve_memorias %}
+                        <p class="text-muted mb-0">
+                            Este evento aún no tiene material disponible para descargar.
+                        </p>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 
-    {% if evento.eve_programacion %}
-    <div class="d-flex justify-content-between mb-4">
-        <a href="{{ evento.eve_programacion.url }}" target="_blank" class="btn btn-outline-primary">
-            Descargar programación (PDF)
-        </a>
-
-        <a href="{% url 'dashboard_participante_evento' evento.eve_id%}" 
-        class="btn btn-outline-secondary rounded-pill px-4 py-2">
+    <!-- Botón volver (siempre) -->
+    <div class="d-flex justify-content-center mt-4 mb-4">
+        <a href="{% url 'dashboard_participante_evento' evento.eve_id %}"
+           class="btn btn-outline-secondary rounded-pill px-4 py-2">
             <i class="bi bi-arrow-left-circle me-2"></i> Volver
         </a>
     </div>
-    {% endif %}
-
 
 </div>
 {% endblock %}

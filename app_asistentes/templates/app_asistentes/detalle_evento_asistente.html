@@ -164,20 +164,30 @@
                             {% if relacion.asi_eve_soporte %}
                                 <div class="col-lg-3 col-md-6">
                                     <a href="{{ relacion.asi_eve_soporte.url }}" 
-                                    class="btn btn-outline-info w-100 py-3 fw-medium" 
-                                    target="_blank">
+                                       class="btn btn-outline-info w-100 py-3 fw-medium" 
+                                       target="_blank">
                                         <i class="bi bi-file-earmark-check me-2"></i>
                                         Ver Comprobante de Pago
                                     </a>
                                 </div>
                             {% endif %}
 
-                            {% if evento.eve_programacion %}
+                            {% if tiene_programacion %}
                             <div class="col-lg-3 col-md-6">
-                                <a href="{{ evento.eve_programacion.url }}" 
-                                   class="btn btn-info w-100 py-3 fw-medium" target="_blank">
+                                <a href="{% url 'descargar_programacion_asistente' evento.eve_id %}" 
+                                class="btn btn-info w-100 py-3 fw-medium" target="_blank">
                                     <i class="bi bi-file-earmark-pdf me-2"></i>
-                                    Ver Programación
+                                    Programación
+                                </a>
+                            </div>
+                            {% endif %}
+
+                            {% if tiene_info_tecnica %}
+                            <div class="col-lg-3 col-md-6">
+                                <a href="{% url 'descargar_info_tecnica_asistente' evento.eve_id %}" 
+                                class="btn btn-outline-primary w-100 py-3 fw-medium" target="_blank">
+                                    <i class="bi bi-file-earmark-text me-2"></i>
+                                    Información técnica
                                 </a>
                             </div>
                             {% endif %}
@@ -195,7 +205,7 @@
                             <div class="col-lg-3 col-md-6">
                                 <button type="button" class="btn btn-outline-success w-100 py-3 fw-medium"
                                         onclick="compartirEvento('{{ evento.eve_id }}', '{{ evento.eve_nombre|escapejs }}')">
-                                    <i class="bi bi-share me-2"></i>
+                                    <i class="bi bi-share ме-2"></i>
                                     Compartir Evento
                                 </button>
                             </div>
@@ -320,18 +330,14 @@
 let datosCompartir = {};
 
 function compartirEvento(eventoId, nombreEvento) {
-    console.log('Compartiendo evento:', eventoId, nombreEvento);
-    
-    // Mostrar loading
     const modalElement = document.getElementById('modalCompartir');
     const modal = new bootstrap.Modal(modalElement);
-    
+
     document.getElementById('nombreEventoCompartir').textContent = nombreEvento;
     document.getElementById('mensajeCompartir').value = 'Cargando información del evento...';
-    
+
     modal.show();
-    
-    // Hacer petición para obtener información del evento
+
     fetch(`/asistente/evento/${eventoId}/compartir/`, {
         method: 'POST',
         headers: {
@@ -341,14 +347,12 @@ function compartirEvento(eventoId, nombreEvento) {
         }
     })
     .then(response => {
-        console.log('Response status:', response.status);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         return response.json();
     })
     .then(data => {
-        console.log('Datos recibidos:', data);
         datosCompartir = data;
         document.getElementById('mensajeCompartir').value = data.mensaje;
     })
@@ -366,10 +370,9 @@ function compartirEvento(eventoId, nombreEvento) {
 function copiarMensaje() {
     const textarea = document.getElementById('mensajeCompartir');
     textarea.select();
-    textarea.setSelectionRange(0, 99999); // Para móviles
+    textarea.setSelectionRange(0, 99999);
     
     navigator.clipboard.writeText(textarea.value).then(function() {
-        // Mostrar feedback
         const btn = event.target.closest('button');
         const originalText = btn.innerHTML;
         btn.innerHTML = '<i class="bi bi-check me-2"></i>¡Copiado!';
@@ -385,11 +388,9 @@ function copiarMensaje() {
 }
 
 function compartirWhatsApp() {
-    console.log('Compartir WhatsApp con datos:', datosCompartir);
     if (datosCompartir.mensaje) {
         const mensaje = encodeURIComponent(datosCompartir.mensaje);
         const url = `https://wa.me/?text=${mensaje}`;
-        console.log('URL WhatsApp:', url);
         window.open(url, '_blank');
     } else {
         alert('Error: No hay mensaje para compartir. Por favor intenta de nuevo.');
@@ -397,7 +398,6 @@ function compartirWhatsApp() {
 }
 
 function compartirFacebook() {
-    console.log('Compartir Facebook con datos:', datosCompartir);
     if (datosCompartir.url) {
         const url = encodeURIComponent(datosCompartir.url);
         window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, '_blank');
@@ -407,7 +407,6 @@ function compartirFacebook() {
 }
 
 function compartirX() {
-    console.log('Compartir X con datos:', datosCompartir);
     if (datosCompartir.titulo && datosCompartir.url) {
         const texto = encodeURIComponent(`${datosCompartir.titulo} - ${datosCompartir.url}`);
         window.open(`https://twitter.com/intent/tweet?text=${texto}`, '_blank');

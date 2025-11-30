@@ -7,6 +7,7 @@ urlpatterns = [
     path("manual/", views.manual_visitante, name="manual_visitante"),
     path('detalle-evento/<int:eve_id>/', views.detalle_evento, name='detalle_evento_visitante'),
     path('<int:eve_id>/compartir/', views.compartir_evento_visitante, name='compartir_evento_visitante'),
+    path('<int:eve_id>/solicitar-acceso/', views.solicitar_acceso_evento, name='solicitar_acceso_evento'),
     path('inscripcion-asistente/<int:eve_id>/', views.inscripcion_asistente, name='inscripcion_asistente'),
     path('inscripcion-participante/<int:eve_id>/', views.inscribirse_participante, name='inscripcion_participante'),
     path('inscripcion-evaluador/<int:eve_id>/', views.inscribirse_evaluador, name='inscripcion_evaluador'),

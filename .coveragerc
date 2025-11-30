@@ -1,0 +1,28 @@
+[run]
+source = .
+omit =
+    */migrations/*
+    */tests/*
+    */urls.py
+    */models.py
+    */manage.py
+    */middleware.py
+    */permisos.py
+    */asgi.py
+    */settings_docker.py
+    */wsgi.py
+    app_admin/__init__.py
+    app_administradores/__init__.py
+    app_areas/__init__.py
+    app_asistentes/__init__.py
+    app_evaluadores/__init__.py
+    app_eventos/__init__.py
+    app_participantes/__init__.py
+    app_usuarios/__init__.py
+    pr_eventsoft/__init__.py
+
+include =
+    */test_*.py
+
+[report]
+show_missing = True

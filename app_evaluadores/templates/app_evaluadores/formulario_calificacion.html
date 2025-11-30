@@ -1,8 +1,8 @@
-{% extends 'base.html' %}
-
+{% extends "base.html" %}
 {% block content %}
 <div class="container mt-4">
-    <h2>Calificar a "{{participante.usuario.first_name}} {{participante.usuario.last_name}}"</h2>
+    <h2>Calificar a {{ participante.usuario.first_name }} {{ participante.usuario.last_name }}</h2>
+
     <form method="post">
         {% csrf_token %}
         {% for c in criterios %}
@@ -12,12 +12,24 @@
                 </label>
                 <select name="criterio_{{ c.cri_id }}" id="criterio_{{ c.cri_id }}" class="form-select" required>
                     <option value="">Selecciona una opción</option>
-                    {% for i in "12345" %}
-                        <option value="{{ forloop.counter }}">{{ forloop.counter }}</option>
-                    {% endfor %}
+                    {% with "12345" as rango %}
+                        {% for _ in rango %}
+                            <option value="{{ forloop.counter }}">{{ forloop.counter }}</option>
+                        {% endfor %}
+                    {% endwith %}
                 </select>
             </div>
+
+            <!-- Observación opcional para este criterio -->
+            <div class="mb-3">
+                <label for="obs_{{ c.cri_id }}" class="form-label">
+                    Observaciones (opcional)
+                </label>
+                <textarea name="obs_{{ c.cri_id }}" id="obs_{{ c.cri_id }}" class="form-control" rows="2" placeholder="Escribe observaciones para este criterio (si lo consideras necesario)"></textarea>
+            </div>
+            <hr>
         {% endfor %}
+
         <button type="submit" class="btn btn-success mt-3">Guardar Calificación</button>
         <a href="{% url 'lista_participantes_evaluador' evento.eve_id %}" class="btn btn-secondary mt-3">Cancelar</a>
     </form>

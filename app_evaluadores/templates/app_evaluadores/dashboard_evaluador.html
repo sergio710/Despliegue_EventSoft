@@ -198,6 +198,9 @@
                             <a href="{% url 'gestionar_items_evaluador' evento.eve_id %}" class="btn-action btn-manage" title="Configura y administra los ítems del evento">
                                 <i class="bi bi-tools"></i> Gestionar Ítems
                             </a>
+                            <a href="{% url 'instrumento_evaluacion' evento.eve_id %}" class="btn-action btn-outline-primary-custom" title="Consulta el instrumento de evaluación">
+                                <i class="bi bi-bar-chart-line"></i> Instrumento de Evaluación
+                            </a>
                             <a href="{% url 'informacion_detallada_evaluador' evento.eve_id %}" class="btn-action btn-info-custom" title="Consulta la información completa del evento">
                                 <i class="bi bi-info-circle"></i> Información Detallada
                             </a>
@@ -226,17 +229,10 @@
 
                         {% if item.tiene_memorias or item.tiene_info_tecnica %}
                         <div class="action-group">
-                            <h6>Descargas</h6>
-                            {% if item.tiene_memorias %}
-                                <a href="{% url 'descargar_memorias_evaluador' evento.eve_id %}" class="btn-action btn-success-custom" title="Descarga las memorias del evento">
-                                    <i class="bi bi-journal-arrow-down"></i> Memorias
+                            <h6>Información Completa Evento</h6>
+                                <a href="{% url 'ver_evento_completo' evento.eve_id %}" class="btn-action btn-success-custom" title="Descarga las memorias del evento">
+                                    <i class="bi bi-journal-arrow-down"></i> Ver Evento Completo
                                 </a>
-                            {% endif %}
-                            {% if item.tiene_info_tecnica %}
-                                <a href="{% url 'descargar_informacion_tecnica_evaluador' evento.eve_id %}" class="btn-action btn-outline-primary-custom" title="Descarga la información técnica">
-                                    <i class="bi bi-file-earmark-arrow-down"></i> Info Técnica
-                                </a>
-                            {% endif %}
                         </div>
                         {% endif %}
                     {% else %}

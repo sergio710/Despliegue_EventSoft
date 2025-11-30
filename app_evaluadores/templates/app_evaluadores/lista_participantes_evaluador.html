@@ -4,57 +4,83 @@
 <div class="container mt-4">
     <h2>Participantes en "{{ evento.eve_nombre }}"</h2>
 
-    {% if participantes %}
+    {% if participantes_data %}
         <table class="table table-striped mt-3">
             <thead>
                 <tr>
                     <th>Nombre</th>
                     <th>Correo</th>
-                    <th>Proyecto Grupal / Individual</th>
-                    <th>Archivo Proyecto</th>
+                    <th>Tipo de participación</th>
+                    <th>Proyectos</th>
+                    <th>Archivos de proyecto</th>
                     <th>Acción</th>
                 </tr>
             </thead>
             <tbody>
-                {% for p in participantes %}
+                {% for item in participantes_data %}
+                {% with p=item.participante proyectos=item.proyectos codigo=item.codigo %}
                 <tr>
-                    <td>{{ p.participante.usuario.first_name }} {{ p.participante.usuario.last_name }}</td>
-                    <td>{{ p.participante.usuario.email }}</td>
+                    <td>{{ p.usuario.first_name }} {{ p.usuario.last_name }}</td>
+                    <td>{{ p.usuario.email }}</td>
+
                     <td>
-                        {% if p.proyecto %}
-                            {{ p.proyecto.titulo }}
+                        {% if codigo %}
+                            Grupal
                         {% else %}
                             Individual
                         {% endif %}
                     </td>
+
                     <td>
-                        {% if p.proyecto and p.proyecto.archivo %}
-                            <a href="{{ p.proyecto.archivo.url }}" target="_blank" class="btn btn-primary btn-sm">
-                                Ver archivo de proyecto
-                            </a>
+                        {% if proyectos %}
+                            {% for pr in proyectos %}
+                                {{ pr.titulo }}{% if not forloop.last %} / {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            Individual
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if proyectos %}
+                            {% for pr in proyectos %}
+                                {% if pr.archivo %}
+                                    <a href="{{ pr.archivo.url }}" target="_blank"
+                                       class="btn btn-primary btn-sm mb-1">
+                                        Ver {{ pr.titulo }}
+                                    </a><br>
+                                {% else %}
+                                    <span class="text-muted d-block mb-1">
+                                        {{ pr.titulo }}: Sin archivo
+                                    </span>
+                                {% endif %}
+                            {% endfor %}
                         {% else %}
                             No hay archivo
                         {% endif %}
                     </td>
 
                     <td>
-                        {% if p.proyecto %}
-                            <!-- Si es parte de un proyecto grupal, verificar si el proyecto ya fue calificado -->
-                            {% if p.proyecto in proyectos_calificados %}
-                                <button class="btn btn-secondary btn-sm" disabled>Ya Calificado</button>
+                        {% if proyectos %}
+                            {# Proyecto grupal: si CUALQUIER proyecto del grupo está en proyectos_calificados, ya está calificado #}
+                            {% if p.id in calificados_ids %}
+                                <button class="btn btn-secondary btn-sm" disabled>Ya calificado</button>
                             {% else %}
-                                <a href="{% url 'calificar_participante_evaluador' evento.eve_id p.participante.id %}" class="btn btn-primary btn-sm">Calificar</a>
+                                <a href="{% url 'calificar_participante_evaluador' evento.eve_id p.id %}"
+                                   class="btn btn-primary btn-sm">Calificar</a>
                             {% endif %}
                         {% else %}
-                            <!-- Si es individual -->
-                            {% if p.participante.id not in calificados_ids %}
-                                <a href="{% url 'calificar_participante_evaluador' evento.eve_id p.participante.id %}" class="btn btn-primary btn-sm">Calificar</a>
+                            {# Individual sin proyecto: usamos calificados_ids directamente #}
+                            {% if p.id in calificados_ids %}
+                                <button class="btn btn-secondary btn-sm" disabled>Ya calificado</button>
                             {% else %}
-                                <button class="btn btn-secondary btn-sm" disabled>Ya Calificado</button>
+                                <a href="{% url 'calificar_participante_evaluador' evento.eve_id p.id %}"
+                                   class="btn btn-primary btn-sm">Calificar</a>
                             {% endif %}
                         {% endif %}
                     </td>
                 </tr>
+                {% endwith %}
                 {% endfor %}
             </tbody>
         </table>

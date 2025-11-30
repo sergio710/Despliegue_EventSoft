@@ -17,7 +17,9 @@
             <p class="text-center text-muted mb-4">Evento: <strong>{{ evento.eve_nombre }}</strong></p>
 
             <!-- FORM principal -->
-            <form id="formPrincipal" action="{% if codigo_invitacion %}{% url 'registro_con_codigo' codigo_invitacion.codigo %}{% else %}{% url 'inscribirse_participante' evento.eve_id %}{% endif %}" method="post" enctype="multipart/form-data">
+            <form id="formPrincipal"
+                  action="{% if codigo_invitacion %}{% url 'registro_con_codigo' codigo_invitacion.codigo %}{% else %}{% url 'inscribirse_participante' evento.eve_id %}{% endif %}"
+                  method="post" enctype="multipart/form-data">
                 {% csrf_token %}
                 
                 <!-- Campo oculto para el código cuando no viene de invitación -->
@@ -74,7 +76,7 @@
                         </select>
                     </div>
 
-                    <!-- Campos del proyecto -->
+                    <!-- Campos del proyecto principal -->
                     <div id="proyecto_fields" class="mb-4" style="display:none;">
                         <label class="form-label">Título del Proyecto</label>
                         <input type="text" name="titulo_proyecto" class="form-control mb-2" required>
@@ -84,6 +86,13 @@
 
                         <label class="form-label">Archivo del Proyecto</label>
                         <input type="file" name="archivo_proyecto" class="form-control" accept=".pdf,.zip,.rar,.doc,.docx" required>
+
+                        <!-- Botón para registrar proyectos adicionales -->
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-outline-success" onclick="abrirModalProyecto()">
+                                <i class="bi bi-folder-plus"></i> Inscribir otro proyecto
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Botón para agregar integrantes en proyectos grupales -->
@@ -109,10 +118,37 @@
                     <input type="file" name="documentos" class="form-control" accept=".pdf,.zip,.rar,.doc,.docx,.png,.jpg,.jpeg" required>
                 </div>
 
-                <!-- Contenedor para archivos de integrantes (se agregan dinámicamente) -->
+                <!-- Contenedor para archivos de integrantes -->
                 <div id="archivos_integrantes_container"></div>
 
-                <div class="d-flex justify-content-between">
+                <!-- Lista de integrantes agregados -->
+                <div id="listaIntegrantes" class="container mt-4" style="display:none;">
+                    <div class="card shadow-sm">
+                        <div class="card-header">
+                            <h5 class="mb-0">Integrantes del Proyecto Agregados:</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="integrantesContainer" class="row"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenedor para archivos de proyectos adicionales -->
+                <div id="archivos_proyectos_container"></div>
+
+                <!-- Lista de proyectos adicionales -->
+                <div id="listaProyectos" class="container mt-4" style="display:none;">
+                    <div class="card shadow-sm">
+                        <div class="card-header">
+                            <h5 class="mb-0">Proyectos adicionales agregados:</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="proyectosContainer" class="row"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between mt-4">
                     <a href="{% url 'detalle_evento_visitante' evento.eve_id %}" class="btn btn-outline-secondary">Cancelar</a>
                     <button type="submit" class="btn btn-primary">Enviar Preinscripción</button>
                 </div>
@@ -121,19 +157,7 @@
     </div>
 </div>
 
-<!-- Lista de integrantes agregados -->
-<div id="listaIntegrantes" class="container mt-4" style="display:none;">
-    <div class="card shadow-sm">
-        <div class="card-header">
-            <h5 class="mb-0">Integrantes del Proyecto Agregados:</h5>
-        </div>
-        <div class="card-body">
-            <div id="integrantesContainer" class="row"></div>
-        </div>
-    </div>
-</div>
-
-<!-- Modal para inscribir integrante adicional -->
+<!-- Modal Integrante (igual al tuyo actual) -->
 <div class="modal fade" id="modalIntegrante" tabindex="-1" aria-labelledby="modalIntegranteLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -181,9 +205,45 @@
     </div>
 </div>
 
+<!-- Modal Proyecto extra -->
+<div class="modal fade" id="modalProyecto" tabindex="-1" aria-labelledby="modalProyectoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalProyectoLabel">Inscribir otro proyecto</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formProyecto">
+                    <div class="mb-3">
+                        <label class="form-label">Título del Proyecto</label>
+                        <input type="text" name="pro_titulo" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea name="pro_descripcion" class="form-control" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Archivo del Proyecto</label>
+                        <input type="file" name="pro_archivo" class="form-control"
+                               accept=".pdf,.zip,.rar,.doc,.docx" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="agregarProyecto()">Agregar proyecto</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 let integrantes = [];
 let contadorIntegrantes = 0;
+
+let proyectosExtras = [];
+let contadorProyectos = 0;
 
 // Manejar cambio en tipo de participación
 document.getElementById("tipo_participacion")?.addEventListener("change", function() {
@@ -194,7 +254,6 @@ document.getElementById("tipo_participacion")?.addEventListener("change", functi
     if (tipo === "individual") {
         proyectoFields.style.display = "block";
         grupalExtra.style.display = "none";
-        // Limpiar integrantes si cambia a individual
         integrantes = [];
         mostrarIntegrantes();
         limpiarArchivosIntegrantes();
@@ -210,18 +269,17 @@ document.getElementById("tipo_participacion")?.addEventListener("change", functi
     }
 });
 
-// Abrir modal para agregar integrante
+
+// ---------- INTEGRANTES ----------
 function abrirModalIntegrante() {
     const modal = new bootstrap.Modal(document.getElementById('modalIntegrante'));
     modal.show();
 }
 
-// Agregar integrante a la lista
 function agregarIntegrante() {
     const form = document.getElementById('formIntegrante');
     const formData = new FormData(form);
     
-    // Validar campos
     const id = formData.get('int_id');
     const nombres = formData.get('int_nombres');
     const apellidos = formData.get('int_apellidos');
@@ -234,7 +292,6 @@ function agregarIntegrante() {
         return;
     }
     
-    // Verificar que no esté duplicado el documento o email
     const duplicado = integrantes.find(int => int.id === id || int.correo === correo);
     if (duplicado) {
         alert('Ya existe un integrante con ese documento o correo');
@@ -256,38 +313,29 @@ function agregarIntegrante() {
     mostrarIntegrantes();
     agregarArchivoIntegrante(integrante);
     
-    // Limpiar formulario y cerrar modal
     form.reset();
     const modal = bootstrap.Modal.getInstance(document.getElementById('modalIntegrante'));
     modal.hide();
 }
 
-// Agregar campo de archivo al formulario principal (CORREGIDO)
 function agregarArchivoIntegrante(integrante) {
     const container = document.getElementById('archivos_integrantes_container');
-    
-    // Crear input file para este integrante
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.name = `integrante_${integrante.indice - 1}_archivo`; // Usar índice base-0
+    fileInput.name = `integrante_${integrante.indice - 1}_archivo`;
     fileInput.style.display = 'none';
     fileInput.id = `archivo_integrante_${integrante.indice}`;
-    
-    // Crear DataTransfer para asignar el archivo
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(integrante.archivo);
     fileInput.files = dataTransfer.files;
-    
     container.appendChild(fileInput);
 }
 
-// Limpiar archivos de integrantes
 function limpiarArchivosIntegrantes() {
     const container = document.getElementById('archivos_integrantes_container');
     container.innerHTML = '';
 }
 
-// Mostrar lista de integrantes
 function mostrarIntegrantes() {
     const container = document.getElementById('integrantesContainer');
     const lista = document.getElementById('listaIntegrantes');
@@ -325,46 +373,142 @@ function mostrarIntegrantes() {
     }
 }
 
-// Eliminar integrante de la lista
 function eliminarIntegrante(index) {
     const integranteEliminado = integrantes[index];
-    
-    // Eliminar archivo correspondiente
     const archivoInput = document.getElementById(`archivo_integrante_${integranteEliminado.indice}`);
-    if (archivoInput) {
-        archivoInput.remove();
-    }
-    
+    if (archivoInput) archivoInput.remove();
     integrantes.splice(index, 1);
     mostrarIntegrantes();
-    
-    // Recrear los archivos con índices actualizados
     limpiarArchivosIntegrantes();
     integrantes.forEach((integrante, newIndex) => {
         const container = document.getElementById('archivos_integrantes_container');
-        
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.name = `integrante_${newIndex}_archivo`;
         fileInput.style.display = 'none';
         fileInput.id = `archivo_integrante_${integrante.indice}`;
-        
         const dataTransfer = new DataTransfer();
         dataTransfer.items.add(integrante.archivo);
         fileInput.files = dataTransfer.files;
-        
         container.appendChild(fileInput);
     });
 }
 
-// Interceptar el envío del formulario principal para incluir integrantes
+
+// ---------- PROYECTOS ADICIONALES ----------
+function abrirModalProyecto() {
+    const modal = new bootstrap.Modal(document.getElementById('modalProyecto'));
+    modal.show();
+}
+
+function agregarProyecto() {
+    const form = document.getElementById('formProyecto');
+    const formData = new FormData(form);
+
+    const titulo = formData.get('pro_titulo');
+    const descripcion = formData.get('pro_descripcion');
+    const archivo = formData.get('pro_archivo');
+
+    if (!titulo || !descripcion || !archivo || archivo.size === 0) {
+        alert('Por favor completa todos los campos del proyecto adicional.');
+        return;
+    }
+
+    contadorProyectos++;
+    const proyecto = {
+        indice: contadorProyectos,
+        titulo: titulo,
+        descripcion: descripcion,
+        archivo: archivo
+    };
+
+    proyectosExtras.push(proyecto);
+    mostrarProyectos();
+    agregarArchivoProyecto(proyecto);
+
+    form.reset();
+    const modal = bootstrap.Modal.getInstance(document.getElementById('modalProyecto'));
+    modal.hide();
+}
+
+function mostrarProyectos() {
+    const container = document.getElementById('proyectosContainer');
+    const lista = document.getElementById('listaProyectos');
+
+    if (proyectosExtras.length > 0) {
+        lista.style.display = 'block';
+        container.innerHTML = '';
+
+        proyectosExtras.forEach((proyecto, index) => {
+            const div = document.createElement('div');
+            div.className = 'col-md-6 mb-3';
+            div.innerHTML = `
+                <div class="card bg-light">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="mb-1">${proyecto.titulo}</h6>
+                                <small class="text-muted">Archivo: ${proyecto.archivo.name}</small>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                    onclick="eliminarProyecto(${index})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(div);
+        });
+    } else {
+        lista.style.display = 'none';
+    }
+}
+
+function agregarArchivoProyecto(proyecto) {
+    const container = document.getElementById('archivos_proyectos_container');
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.name = `proyecto_extra_${proyecto.indice - 1}_archivo`;  // <- nombre que ve la vista
+    fileInput.style.display = 'none';
+    fileInput.id = `archivo_proyecto_${proyecto.indice}`;
+    const dt = new DataTransfer();
+    dt.items.add(proyecto.archivo);
+    fileInput.files = dt.files;
+    container.appendChild(fileInput);
+}
+
+function eliminarProyecto(index) {
+    const proyectoEliminado = proyectosExtras[index];
+    const archivoInput = document.getElementById(`archivo_proyecto_${proyectoEliminado.indice}`);
+    if (archivoInput) archivoInput.remove();
+
+    proyectosExtras.splice(index, 1);
+    mostrarProyectos();
+
+    const container = document.getElementById('archivos_proyectos_container');
+    container.innerHTML = '';
+    proyectosExtras.forEach((proyecto, newIndex) => {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.name = `proyecto_extra_${newIndex}_archivo`;
+        fileInput.style.display = 'none';
+        fileInput.id = `archivo_proyecto_${proyecto.indice}`;
+        const dt = new DataTransfer();
+        dt.items.add(proyecto.archivo);
+        fileInput.files = dt.files;
+        container.appendChild(fileInput);
+    });
+}
+
+
+// ---------- Submit del formulario principal ----------
 document.getElementById('formPrincipal').addEventListener('submit', function(e) {
     const tipo = document.getElementById('tipo_participacion')?.value;
-    
+
+    // Integrantes para grupal
     if (tipo === 'grupal' && integrantes.length > 0) {
-        // Agregar integrantes como campos ocultos (sin archivos, los archivos ya están como inputs)
         integrantes.forEach((integrante, index) => {
-            // Crear inputs ocultos para cada campo del integrante
             const campos = ['id', 'nombres', 'apellidos', 'correo', 'telefono'];
             campos.forEach(campo => {
                 const input = document.createElement('input');
@@ -374,13 +518,33 @@ document.getElementById('formPrincipal').addEventListener('submit', function(e) 
                 this.appendChild(input);
             });
         });
-        
-        // Agregar contador de integrantes
         const inputCount = document.createElement('input');
         inputCount.type = 'hidden';
         inputCount.name = 'total_integrantes';
         inputCount.value = integrantes.length;
         this.appendChild(inputCount);
+    }
+
+    // Proyectos adicionales
+    if (proyectosExtras.length > 0) {
+        proyectosExtras.forEach((proyecto, index) => {
+            const inputTitulo = document.createElement('input');
+            inputTitulo.type = 'hidden';
+            inputTitulo.name = `proyecto_extra_${index}_titulo`;
+            inputTitulo.value = proyecto.titulo;
+            this.appendChild(inputTitulo);
+
+            const inputDesc = document.createElement('input');
+            inputDesc.type = 'hidden';
+            inputDesc.name = `proyecto_extra_${index}_descripcion`;
+            inputDesc.value = proyecto.descripcion;
+            this.appendChild(inputDesc);
+        });
+        const inputCountProy = document.createElement('input');
+        inputCountProy.type = 'hidden';
+        inputCountProy.name = 'total_proyectos_extras';
+        inputCountProy.value = proyectosExtras.length;
+        this.appendChild(inputCountProy);
     }
 });
 </script>

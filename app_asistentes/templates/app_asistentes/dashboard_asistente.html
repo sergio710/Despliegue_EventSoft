@@ -159,15 +159,6 @@
                                                     <i class="bi bi-share me-1"></i>
                                                     Compartir evento
                                                 </button>
-
-                                                <!-- Botón de descarga de memorias -->
-                                                {% if item.estado == 'Aprobado' and item.tiene_memorias %}
-                                                <a href="{% url 'descargar_memorias_asistente' item.evento.eve_id %}" 
-                                                   class="btn btn-outline-primary btn-sm">
-                                                    <i class="bi bi-journal-arrow-down me-1"></i>
-                                                    Descargar Memorias
-                                                </a>
-                                                {% endif %}
                                             </div>
                                         </div>
                                     </div>

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    <h2 class="fw-bold mb-4">Editar proyecto – {{ evento.eve_nombre }}</h2>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body p-4">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label class="form-label">Título del proyecto</label>
+                    <input type="text" name="titulo" class="form-control" value="{{ proyecto.titulo }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Descripción</label>
+                    <textarea name="descripcion" class="form-control" rows="4" required>{{ proyecto.descripcion }}</textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Archivo del proyecto</label>
+                    <input type="file" name="archivo" class="form-control" accept=".pdf,.zip,.rar,.doc,.docx">
+                    {% if proyecto.archivo %}
+                        <div class="mt-2">
+                            <a href="{{ proyecto.archivo.url }}" target="_blank" class="btn btn-outline-secondary btn-sm">
+                                Ver archivo actual
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="d-flex gap-2 mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        Guardar cambios
+                    </button>
+                    <a href="{% url 'gestionar_proyectos_evento' evento.eve_id %}" 
+                       class="btn btn-outline-secondary">
+                        Cancelar
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

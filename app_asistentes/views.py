@@ -54,17 +54,16 @@ def detalle_evento_asistente(request, eve_id):
             messages.success(request, "Inscripción cancelada correctamente.")
             return redirect('dashboard_asistente')
 
-    # Agregar información sobre memorias disponibles
     tiene_memorias = bool(evento.eve_memorias)
-    
-    # Verificar si existe soporte de pago
-    tiene_soporte = bool(relacion.asi_eve_soporte)
+    tiene_programacion = bool(evento.eve_programacion)
+    tiene_info_tecnica = bool(getattr(evento, 'eve_informacion_tecnica', None))
 
     return render(request, 'app_asistentes/detalle_evento_asistente.html', {
         'evento': evento,
         'relacion': relacion,
         'tiene_memorias': tiene_memorias,
-        'tiene_soporte': tiene_soporte,
+        'tiene_programacion': tiene_programacion,
+        'tiene_info_tecnica': tiene_info_tecnica,
     })
 
 @login_required
@@ -127,16 +126,46 @@ def descargar_programacion(request, evento_id):
             file_path = evento.eve_programacion.path
             tipo_mime, _ = mimetypes.guess_type(file_path)
             tipo_mime = tipo_mime or "application/octet-stream"
-            return FileResponse(open(file_path, 'rb'),
-                                as_attachment=True,
-                                filename=f"programacion_{evento_id}{os.path.splitext(file_path)[1]}",
-                                content_type=tipo_mime)
+            return FileResponse(
+                open(evento.eve_programacion.path, 'rb'),
+                as_attachment=False,  # <- aquí el cambio
+                filename=f"Programacion_{evento.eve_nombre}_{os.path.basename(evento.eve_programacion.name)}"
+            )
         except FileNotFoundError:
             messages.error(request, "El archivo de programación no se encuentra en el servidor.")
             return redirect('ver_qr_asistente')
     else:
         messages.warning(request, "No hay programación disponible para este evento.")
         return redirect('ver_qr_asistente')
+
+@login_required
+@user_passes_test(es_asistente, login_url='ver_eventos')
+def descargar_info_tecnica_asistente(request, evento_id):
+    evento = get_object_or_404(Evento, eve_id=evento_id)
+    asistente = request.user.asistente
+    relacion = get_object_or_404(AsistenteEvento, asistente=asistente, evento=evento)
+
+    if relacion.asi_eve_estado != 'Aprobado':
+        messages.error(request, "Solo puedes descargar información técnica si tu inscripción está aprobada.")
+        return redirect('dashboard_asistente')
+
+    if not evento.eve_informacion_tecnica:
+        messages.error(request, "Este evento no tiene información técnica disponible.")
+        return redirect('dashboard_asistente')
+
+    if not os.path.exists(evento.eve_informacion_tecnica.path):
+        messages.error(request, "El archivo de información técnica no se encuentra disponible.")
+        return redirect('dashboard_asistente')
+
+    try:
+        return FileResponse(
+            open(evento.eve_informacion_tecnica.path, 'rb'),
+            as_attachment=False,  # <- aquí el cambio
+            filename=f"Programacion_{evento.eve_nombre}_{os.path.basename(evento.eve_programacion.name)}"
+        )
+    except Exception:
+        messages.error(request, "Error al descargar el archivo de información técnica.")
+        return redirect('dashboard_asistente')
 
 @login_required
 @user_passes_test(es_asistente, login_url='ver_eventos')

@@ -4,7 +4,7 @@ from django.contrib import messages
 from app_eventos.models import Evento
 from app_areas.models import Categoria, Area
 from app_administradores.models import AdministradorEvento, CodigoInvitacionAdminEvento
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMessage, send_mail
 from django.utils import timezone
 import uuid
 from app_usuarios.models import Rol, RolUsuario
@@ -174,30 +174,43 @@ def dashboard(request):
         if estado_formateado in nuevos_por_estado:
             nuevos_por_estado[estado_formateado].append(evento.eve_id)
     vistos = request.session.get('eventos_vistos', {})
-    notificaciones = {}
+    notificaciones_dict = {}
     total_nuevos = 0
     for estado, eventos_ids in nuevos_por_estado.items():
         vistos_estado = vistos.get(estado, [])
         nuevos = [eid for eid in eventos_ids if eid not in vistos_estado]
-        notificaciones[estado] = len(nuevos)
+        notificaciones_dict[estado] = len(nuevos)
         total_nuevos += len(nuevos)
     if total_nuevos > 0:
         mensajes_estados = []
-        for estado, cantidad in notificaciones.items():
+        for estado, cantidad in notificaciones_dict.items():
             if cantidad > 0:
                 mensajes_estados.append(f"{cantidad} nuevo(s) en '{estado}'")
         mensaje_notificacion = " | ".join(mensajes_estados)
         messages.info(request, f"Tienes {total_nuevos} evento(s) nuevo(s): {mensaje_notificacion}")
+    
     estados_tarjetas = [
         ('Aprobado', 'success', '✔️'),
         ('Pendiente', 'warning', '⏳'),
         ('Rechazado', 'danger', '❌'),
         ('Inscripciones Cerradas', 'info', '📋'),
         ('Finalizado', 'secondary', '🏁'),
-    ]    
+    ]
+    
+    # Restructurar estados_tarjetas para incluir notificaciones
+    estados_con_notificaciones = []
+    for estado, color, icono in estados_tarjetas:
+        cantidad_notificaciones = notificaciones_dict.get(estado, 0)
+        estados_con_notificaciones.append({
+            'estado': estado,
+            'color': color,
+            'icono': icono,
+            'notificaciones': cantidad_notificaciones
+        })
+    
     return render(request, 'dashboard.html', {
-        'notificaciones': notificaciones,
-        'estados_tarjetas': estados_tarjetas
+        'notificaciones': notificaciones_dict,
+        'estados_tarjetas': estados_con_notificaciones
     })
 
 @login_required
@@ -294,7 +307,7 @@ def detalle_evento_admin(request, eve_id):
 
     if request.method == 'POST':
         nuevo_estado = request.POST.get('nuevo_estado')
-        
+    
         # Si el evento está finalizado y se cambia a cerrado, eliminar toda la información
         if evento.eve_estado.lower() == 'finalizado' and nuevo_estado.lower() == 'cerrado':
             try:
@@ -304,28 +317,39 @@ def detalle_evento_admin(request, eve_id):
             except Exception as e:
                 messages.error(request, f'Error al cerrar el evento: {str(e)}')
                 return redirect('detalle_evento_admin', eve_id=eve_id)
-        else:
-            evento.eve_estado = nuevo_estado
-            evento.save()
 
-            admin_evento = evento.eve_administrador_fk
-            admin_usuario = admin_evento.usuario if admin_evento else None
-            if admin_usuario and admin_usuario.email:
-                cuerpo_html = render_to_string('correo_estado_evento_admin.html', {
-                    'evento': evento,
-                    'nuevo_estado': nuevo_estado,
-                    'admin': admin_usuario,
-                })
-                email = EmailMessage(
-                    subject=f'Actualización de estado de tu evento: {evento.eve_nombre}',
-                    body=cuerpo_html,
-                    to=[admin_usuario.email],
-                )
-                email.content_subtype = 'html'
-                email.send(fail_silently=True)
+        # 🚫 Bloquear cualquier cambio de estado si está finalizado (excepto cerrado)
+        if evento.eve_estado.lower() == 'finalizado' and nuevo_estado.lower() != 'cerrado':
+            messages.error(request, 'No se puede cambiar el estado de un evento finalizado.')
+            return redirect('detalle_evento_admin', eve_id=eve_id)
 
-            messages.success(request, 'Estado actualizado exitosamente')
-            return redirect('dashboard_superadmin')
+        # ✅ Permitir aprobar desde Pendiente o Inscripciones Cerradas
+        if nuevo_estado.lower() == 'aprobado' and evento.eve_estado.lower() not in ['pendiente', 'inscripciones cerradas']:
+            messages.error(request, 'Solo se pueden aprobar eventos en estado Pendiente o con Inscripciones Cerradas.')
+            return redirect('detalle_evento_admin', eve_id=eve_id)
+
+        # Guardar el nuevo estado si pasa las validaciones
+        evento.eve_estado = nuevo_estado
+        evento.save()
+
+        admin_evento = evento.eve_administrador_fk
+        admin_usuario = admin_evento.usuario if admin_evento else None
+        if admin_usuario and admin_usuario.email:
+            cuerpo_html = render_to_string('correo_estado_evento_admin.html', {
+                'evento': evento,
+                'nuevo_estado': nuevo_estado,
+                'admin': admin_usuario,
+            })
+            email = EmailMessage(
+                subject=f'Actualización de estado de tu evento: {evento.eve_nombre}',
+                body=cuerpo_html,
+                to=[admin_usuario.email],
+            )
+            email.content_subtype = 'html'
+            email.send(fail_silently=True)
+
+        messages.success(request, 'Estado actualizado exitosamente')
+        return redirect('dashboard_superadmin')
     
     administrador = get_object_or_404(AdministradorEvento, pk=evento.eve_administrador_fk_id)
     
@@ -443,43 +467,6 @@ def descargar_programacion(request, eve_id):
     else:
         messages.error(request, "Este evento no tiene un archivo de programación.")
         return redirect('detalle_evento_admin', eve_id=eve_id)
-    
-
-@login_required
-@user_passes_test(es_superadmin, login_url='ver_eventos')
-def crear_administrador_evento(request):
-    if request.method == 'POST':
-        username = request.POST.get('username')
-        email = request.POST.get('email')
-        password = request.POST.get('password')
-        first_name = request.POST.get('first_name')
-        last_name = request.POST.get('last_name')
-        telefono = request.POST.get('telefono')
-        documento = request.POST.get('documento')
-
-        if Usuario.objects.filter(email=email).exists():
-            messages.error(request, 'Ya existe un usuario con ese correo.')
-        elif Usuario.objects.filter(documento=documento).exists():
-            messages.error(request, 'Ya existe un usuario con ese documento.')
-        else:
-            user = Usuario.objects.create_user(
-                username=username,
-                email=email,
-                password=password,
-                first_name=first_name,
-                last_name=last_name,
-                telefono=telefono,
-                documento=documento
-            )
-            # Asignar el rol correctamente usando Rol y RolUsuario
-            
-            rol_admin, _ = Rol.objects.get_or_create(nombre='administrador_evento')
-            RolUsuario.objects.create(usuario=user, rol=rol_admin)
-            AdministradorEvento.objects.create(usuario=user)
-            messages.success(request, 'Administrador de evento creado exitosamente.')
-            return redirect('dashboard_superadmin')
-
-    return render(request, 'crear_administrador_evento.html')
 
 @login_required
 @user_passes_test(es_superadmin, login_url='ver_eventos')

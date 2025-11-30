@@ -1,11 +1,14 @@
 from app_administradores.models import CodigoInvitacionAdminEvento, AdministradorEvento, CodigoInvitacionEvento
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+from django.core.mail import send_mail
 from django.http import HttpResponse, JsonResponse, Http404, FileResponse
 from django.conf import settings
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.utils import timezone
+from django.utils.html import strip_tags
 from django.db.models import Q
 from app_participantes.models import Participante, ParticipanteEvento, Proyecto
 from app_areas.models import Area, Categoria
@@ -129,6 +132,66 @@ def compartir_evento_visitante(request, eve_id):
         'error': 'Método no permitido.'
     }, status=405)
 
+@require_POST
+@csrf_exempt
+def solicitar_acceso_evento(request, eve_id):
+    evento = get_object_or_404(Evento, pk=eve_id)
+
+    if evento.eve_estado.lower() not in ['aprobado', 'inscripciones cerradas']:
+        return JsonResponse({
+            'success': False,
+            'error': 'Este evento no está disponible para recibir solicitudes.'
+        }, status=403)
+
+    asunto = request.POST.get('asunto', '').strip()
+    cuerpo = request.POST.get('cuerpo', '').strip()
+
+    if not asunto or not cuerpo:
+        return JsonResponse({
+            'success': False,
+            'error': 'Debes completar asunto y mensaje.'
+        }, status=400)
+
+    administradores = [evento.eve_administrador_fk]
+
+    destinatarios = []
+    for admin in administradores:
+        if admin.usuario and admin.usuario.email:
+            destinatarios.append(admin.usuario.email)
+
+    if not destinatarios:
+        return JsonResponse({
+            'success': False,
+            'error': 'No hay correos de administradores configurados para este evento.'
+        }, status=500)
+
+    asunto_correo = f"[Solicitud acceso] {evento.eve_nombre} - {asunto}"
+
+    contexto = {
+        'evento': evento,
+        'asunto_usuario': asunto,   # lo que escribió el visitante
+        'mensaje_usuario': cuerpo,
+    }
+
+    html_message = render_to_string('solicitud_acceso_evento.html', contexto)
+    plain_message = strip_tags(html_message)
+
+    try:
+        send_mail(
+            subject=asunto_correo,
+            message=plain_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=destinatarios,
+            html_message=html_message,
+            fail_silently=False,
+        )
+        return JsonResponse({'success': True})
+    except Exception:
+        return JsonResponse({
+            'success': False,
+            'error': 'No se pudo enviar la solicitud. Inténtalo más tarde.'
+        }, status=500)
+
 def inscripcion_asistente(request, eve_id):
     return registro_evento(request, eve_id, 'asistente')
 
@@ -179,7 +242,7 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
     if not evento:
         messages.error(request, "Evento no encontrado")
         return redirect('ver_eventos')
-    
+
     # -------------------------
     # 🔹 Datos del formulario
     # -------------------------
@@ -198,7 +261,7 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
         archivo_proyecto = request.FILES.get("archivo_proyecto")
         codigo_existente = request.POST.get("codigo")
         es_integrante_extra = request.POST.get("es_integrante_extra") == "true"
-        
+
         # Obtener integrantes adicionales del formulario
         integrantes_data = []
         total_integrantes = request.POST.get('total_integrantes')
@@ -217,7 +280,7 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                         integrantes_data.append(integrante)
             except (ValueError, TypeError):
                 pass  # Si hay error en la conversión, continúa sin integrantes
-        
+
     elif tipo == 'evaluador':
         documento = request.POST.get('eva_id')
         nombres = request.POST.get('eva_nombres')
@@ -228,27 +291,28 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
     else:
         messages.error(request, "Tipo de registro inválido para códigos de invitación.")
         return redirect('ver_eventos')
-    
+
     # -------------------------
     # 🔹 Validación básica
     # -------------------------
     if not (documento and nombres and apellidos):
         messages.error(request, "Por favor completa todos los campos obligatorios.")
         return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
-    
+
     # -------------------------
     # 🔹 Validar usuario existente
     # -------------------------
     usuario = Usuario.objects.filter(Q(email=correo) | Q(documento=documento)).first()
     if usuario:
-        if (usuario.email != correo or usuario.documento != documento or 
+        if (usuario.email != correo or usuario.documento != documento or
             usuario.first_name != nombres or usuario.last_name != apellidos):
-            messages.error(request, 
+            messages.error(
+                request,
                 "Los datos no coinciden con un usuario existente. "
                 "Si ya tienes cuenta, verifica que los datos sean exactamente iguales."
             )
             return redirect('registro_con_codigo', codigo=request.POST.get('codigo', ''))
-    
+
     # -------------------------
     # 🔹 Validar que no esté inscrito ya
     # -------------------------
@@ -263,7 +327,7 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                 ya_inscrito = True
                 pendiente_confirmacion = not participacion.confirmado
                 rol_inscrito = "participante"
-        
+
         if not ya_inscrito:
             evaluador = getattr(usuario, 'evaluador', None)
             if evaluador:
@@ -272,7 +336,7 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     ya_inscrito = True
                     pendiente_confirmacion = not evaluacion.confirmado
                     rol_inscrito = "evaluador"
-        
+
         if not ya_inscrito:
             asistente = getattr(usuario, 'asistente', None)
             if asistente:
@@ -281,15 +345,24 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     ya_inscrito = True
                     pendiente_confirmacion = not asistencia.confirmado
                     rol_inscrito = "asistente"
-    
+
     if ya_inscrito:
         if pendiente_confirmacion:
             messages.warning(request, f"Ya tienes una inscripción como {rol_inscrito} en este evento pendiente de confirmación.")
         else:
             messages.info(request, f"Ya estás inscrito como {rol_inscrito} en este evento.")
         return redirect('ver_eventos')
-    
+
     # -------------------------
+    # 🔹 Función para procesar participante
+    # -------------------------
+        # -------------------------
+    # 🔹 Función para procesar participante
+    # -------------------------
+        # -------------------------
+    # 🔹 Función para procesar participante
+    # -------------------------
+        # -------------------------
     # 🔹 Función para procesar participante
     # -------------------------
     def procesar_participante(usuario_param, archivo_param, es_principal=True):
@@ -297,12 +370,12 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
         rol = Rol.objects.filter(nombre__iexact='participante').first()
         if rol and not RolUsuario.objects.filter(usuario=usuario_param, rol=rol).exists():
             RolUsuario.objects.create(usuario=usuario_param, rol=rol)
-        
+
         participante, _ = Participante.objects.get_or_create(usuario=usuario_param)
-        
+
         proyecto = None
         codigo_grupo = None
-        
+
         if es_principal:
             # Crear proyecto solo para el participante principal
             if modalidad == "individual":
@@ -310,7 +383,8 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     titulo=titulo_proyecto,
                     descripcion=descripcion_proyecto,
                     archivo=archivo_proyecto,
-                    evento=evento
+                    evento=evento,
+                    creador=participante   # dueño / líder
                 )
                 codigo_grupo = None
             elif modalidad == "grupal":
@@ -319,20 +393,25 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     titulo=titulo_proyecto,
                     descripcion=descripcion_proyecto,
                     archivo=archivo_proyecto,
-                    evento=evento
+                    evento=evento,
+                    creador=participante   # líder del grupo
                 )
         else:
-            # Para integrantes, usar el proyecto del principal
+            # Para integrantes que se inscriben con código de grupo existente
             if es_integrante_extra and codigo_existente:
-                proyecto_evento = ParticipanteEvento.objects.filter(evento=evento, codigo=codigo_existente).first()
+                proyecto_evento = ParticipanteEvento.objects.filter(
+                    evento=evento,
+                    codigo=codigo_existente
+                ).first()
                 if proyecto_evento and proyecto_evento.proyecto:
                     proyecto = proyecto_evento.proyecto
                     codigo_grupo = codigo_existente
                 else:
                     messages.error(request, "Código de grupo no válido o no encontrado.")
-                    return None, None
-        
-        ParticipanteEvento.objects.get_or_create(
+                    return None, None, None
+
+        # Fila principal de inscripción por participante–evento
+        participante_evento, _ = ParticipanteEvento.objects.get_or_create(
             participante=participante,
             evento=evento,
             defaults={
@@ -344,8 +423,16 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                 'proyecto': proyecto
             }
         )
-        
-        return proyecto, codigo_grupo
+
+        # Si ya existía la fila y era principal, actualizar proyecto/código/doc si hace falta
+        if es_principal and participante_evento.proyecto is None and proyecto is not None:
+            participante_evento.proyecto = proyecto
+            participante_evento.codigo = codigo_grupo
+            if archivo_param:
+                 participante_evento.par_eve_documentos = archivo_param
+            participante_evento.save()
+
+        return participante, proyecto, codigo_grupo
 
     # -------------------------
     # 🔹 Función para procesar integrantes
@@ -354,30 +441,28 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
         """Función para procesar los integrantes adicionales del proyecto grupal"""
         rol_participante = Rol.objects.filter(nombre='participante').first()
         integrantes_procesados = 0
-    
+
         for index, integrante_data in enumerate(integrantes_lista):
             try:
-                # Obtener el archivo del integrante desde request.FILES
                 archivo_integrante = request.FILES.get(f'integrante_{index}_archivo')
-            
-                # Verificar si el usuario ya existe
+
                 usuario_int = Usuario.objects.filter(
                     Q(email=integrante_data['correo']) | Q(documento=integrante_data['id'])
                 ).first()
-            
+
                 if usuario_int:
-                    # Verificar datos coincidentes
-                    if (usuario_int.email != integrante_data['correo'] or 
-                        usuario_int.documento != integrante_data['id'] or 
-                        usuario_int.first_name != integrante_data['nombres'] or 
-                        usuario_int.last_name != integrante_data['apellidos']):
-                        continue  # Skip este integrante si los datos no coinciden
-                
+                    if (
+                        usuario_int.email != integrante_data['correo'] or
+                        usuario_int.documento != integrante_data['id'] or
+                        usuario_int.first_name != integrante_data['nombres'] or
+                        usuario_int.last_name != integrante_data['apellidos']
+                    ):
+                        continue
+
                     if not usuario_int.is_active:
                         usuario_int.is_active = True
                         usuario_int.save()
                 else:
-                    # Crear nuevo usuario
                     usuario_int = Usuario.objects.create_user(
                         username=integrante_data['correo'].split('@')[0],
                         email=integrante_data['correo'],
@@ -388,20 +473,19 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                         password='temporal',
                         is_active=True
                     )
-                
-                    # Enviar correo con credenciales
+
                     clave = generar_clave()
                     usuario_int.set_password(clave)
                     usuario_int.save()
-                
+
                     cuerpo_html = render_to_string('correo_registro_completado.html', {
                         'nombre': usuario_int.first_name,
-                        'evento': evento.eve_nombre,  # Usar la variable 'evento' que ya está disponible
+                        'evento': evento.eve_nombre,
                         'tipo': 'Participante',
                         'clave': clave,
                         'email': usuario_int.email,
                     })
-                
+
                     email = EmailMessage(
                         subject=f'Registro completado - {evento.eve_nombre}',
                         body=cuerpo_html,
@@ -411,33 +495,33 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     try:
                         email.send()
                     except:
-                        pass  # Si falla el envío, continúa sin bloquear el registro
-            
-                # Asignar rol de participante
-                if rol_participante and not RolUsuario.objects.filter(usuario=usuario_int, rol=rol_participante).exists():
+                        pass
+
+                if rol_participante and not RolUsuario.objects.filter(
+                    usuario=usuario_int, rol=rol_participante
+                ).exists():
                     RolUsuario.objects.create(usuario=usuario_int, rol=rol_participante)
-            
-                # Crear participante
+
                 participante, _ = Participante.objects.get_or_create(usuario=usuario_int)
-            
-                # Verificar que no esté ya inscrito
-                if not ParticipanteEvento.objects.filter(participante=participante, evento=evento).exists():
-                    # Crear inscripción asociada al proyecto principal CON EL ARCHIVO
+
+                if not ParticipanteEvento.objects.filter(
+                    participante=participante, evento=evento
+                ).exists():
                     ParticipanteEvento.objects.create(
                         participante=participante,
                         evento=evento,
                         par_eve_fecha_hora=timezone.now(),
                         par_eve_estado='Pendiente',
-                        par_eve_documentos=archivo_integrante,  # AQUÍ SE GUARDA EL ARCHIVO
+                        par_eve_documentos=archivo_integrante,
                         confirmado=True,
                         codigo=codigo_grupo_principal,
                         proyecto=proyecto_principal
                     )
                     integrantes_procesados += 1
-                
-            except Exception as e:
-                continue  # Si hay error con un integrante, continúa con los demás
-    
+
+            except Exception:
+                continue
+
         return integrantes_procesados
 
     # -------------------------
@@ -446,17 +530,42 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
     proyecto_principal = None
     codigo_grupo_principal = None
     integrantes_procesados = 0
-    
+
     # Usuario activo
     if usuario and usuario.is_active:
         if tipo == 'participante':
-            proyecto_principal, codigo_grupo_principal = procesar_participante(usuario, archivo, True)
-            
-            # Procesar integrantes si es grupal y hay integrantes
+            participante_obj, proyecto_principal, codigo_grupo_principal = procesar_participante(
+                usuario, archivo, True
+            )
+
+            # Proyectos adicionales del mismo participante (individual o grupal)
+            total_proyectos_extras = int(request.POST.get('total_proyectos_extras', 0) or 0)
+            for i in range(total_proyectos_extras):
+                titulo_extra = request.POST.get(f'proyecto_extra_{i}_titulo')
+                descripcion_extra = request.POST.get(f'proyecto_extra_{i}_descripcion')
+                archivo_extra = request.FILES.get(f'proyecto_extra_{i}_archivo')
+
+                if not titulo_extra or not archivo_extra:
+                    continue
+
+                Proyecto.objects.create(
+                    evento=evento,
+                    titulo=titulo_extra,
+                    descripcion=descripcion_extra,
+                    archivo=archivo_extra,
+                    creador=participante_obj   # <- mismo participante (líder o dueño)
+                )
+
             if modalidad == "grupal" and integrantes_data and proyecto_principal:
-                integrantes_procesados = procesar_integrantes_adicionales(integrantes_data, proyecto_principal, codigo_grupo_principal)
-                
+                integrantes_procesados = procesar_integrantes_adicionales(
+                    integrantes_data, proyecto_principal, codigo_grupo_principal
+                )
+
         elif tipo == 'evaluador':
+            rol_eval = Rol.objects.filter(nombre__iexact='evaluador').first()
+            if rol_eval and not RolUsuario.objects.filter(usuario=usuario, rol=rol_eval).exists():
+                RolUsuario.objects.create(usuario=usuario, rol=rol_eval)
+
             evaluador, _ = Evaluador.objects.get_or_create(usuario=usuario)
             EvaluadorEvento.objects.get_or_create(
                 evaluador=evaluador,
@@ -468,19 +577,46 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     'confirmado': True
                 }
             )
-    
+
     # Usuario inactivo
     elif usuario and not usuario.is_active:
         usuario.is_active = True
         usuario.save()
-        
+
         if tipo == 'participante':
-            proyecto_principal, codigo_grupo_principal = procesar_participante(usuario, archivo, True)
-            
+            participante_obj, proyecto_principal, codigo_grupo_principal = procesar_participante(
+                usuario, archivo, True
+            )
+
+            # Proyectos adicionales del mismo participante (individual o grupal)
+            total_proyectos_extras = int(request.POST.get('total_proyectos_extras', 0) or 0)
+            for i in range(total_proyectos_extras):
+                titulo_extra = request.POST.get(f'proyecto_extra_{i}_titulo')
+                descripcion_extra = request.POST.get(f'proyecto_extra_{i}_descripcion')
+                archivo_extra = request.FILES.get(f'proyecto_extra_{i}_archivo')
+
+                if not titulo_extra or not archivo_extra:
+                    continue
+
+                Proyecto.objects.create(
+                    evento=evento,
+                    titulo=titulo_extra,
+                    descripcion=descripcion_extra,
+                    archivo=archivo_extra,
+                    creador=participante_obj
+                )
+
+
             if modalidad == "grupal" and integrantes_data and proyecto_principal:
-                integrantes_procesados = procesar_integrantes_adicionales(integrantes_data, proyecto_principal, codigo_grupo_principal)
-                
+                integrantes_procesados = procesar_integrantes_adicionales(
+                    integrantes_data, proyecto_principal, codigo_grupo_principal
+                )
+
         elif tipo == 'evaluador':
+            rol_eval = Rol.objects.filter(nombre__iexact='evaluador').first()
+            if rol_eval and not RolUsuario.objects.filter(usuario=usuario, rol=rol_eval).exists():
+                RolUsuario.objects.create(usuario=usuario, rol=rol_eval)
+
             evaluador, _ = Evaluador.objects.get_or_create(usuario=usuario)
             EvaluadorEvento.objects.get_or_create(
                 evaluador=evaluador,
@@ -492,7 +628,7 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                     'confirmado': True
                 }
             )
-    
+
     # Usuario nuevo
     else:
         usuario = Usuario.objects.create_user(
@@ -505,14 +641,39 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
             password='temporal',
             is_active=True
         )
-        
+
         if tipo == 'participante':
-            proyecto_principal, codigo_grupo_principal = procesar_participante(usuario, archivo, True)
-            
+            participante_obj, proyecto_principal, codigo_grupo_principal = procesar_participante(
+                usuario, archivo, True
+            )
+
+            total_proyectos_extras = int(request.POST.get('total_proyectos_extras', 0) or 0)
+            for i in range(total_proyectos_extras):
+                titulo_extra = request.POST.get(f'proyecto_extra_{i}_titulo')
+                descripcion_extra = request.POST.get(f'proyecto_extra_{i}_descripcion')
+                archivo_extra = request.FILES.get(f'proyecto_extra_{i}_archivo')
+
+                if not titulo_extra or not archivo_extra:
+                    continue
+
+                Proyecto.objects.create(
+                    evento=evento,
+                    titulo=titulo_extra,
+                    descripcion=descripcion_extra,
+                    archivo=archivo_extra,
+                    creador=participante_obj
+                )
+
             if modalidad == "grupal" and integrantes_data and proyecto_principal:
-                integrantes_procesados = procesar_integrantes_adicionales(integrantes_data, proyecto_principal, codigo_grupo_principal)
-                
+                integrantes_procesados = procesar_integrantes_adicionales(
+                    integrantes_data, proyecto_principal, codigo_grupo_principal
+                )
+
         elif tipo == 'evaluador':
+            rol_eval = Rol.objects.filter(nombre__iexact='evaluador').first()
+            if rol_eval and not RolUsuario.objects.filter(usuario=usuario, rol=rol_eval).exists():
+                RolUsuario.objects.create(usuario=usuario, rol=rol_eval)
+
             evaluador = Evaluador.objects.create(usuario=usuario)
             EvaluadorEvento.objects.create(
                 evaluador=evaluador,
@@ -522,12 +683,11 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
                 eva_eve_documentos=archivo,
                 confirmado=True
             )
-        
-        # Enviar correo con credenciales al usuario principal
+
         clave = generar_clave()
         usuario.set_password(clave)
         usuario.save()
-        
+
         cuerpo_html = render_to_string('correo_registro_completado.html', {
             'nombre': usuario.first_name,
             'evento': evento.eve_nombre,
@@ -535,7 +695,7 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
             'clave': clave,
             'email': usuario.email,
         })
-        
+
         email = EmailMessage(
             subject=f'Registro completado - {evento.eve_nombre}',
             body=cuerpo_html,
@@ -545,17 +705,21 @@ def procesar_registro_con_codigo(request, eve_id, tipo, email_prefijado):
         try:
             email.send()
         except:
-            pass  # Si falla el envío, continúa sin bloquear el registro
-    
+            pass
+
     # -------------------------
     # 🔹 Mensaje de confirmación
     # -------------------------
     if tipo == 'participante' and modalidad == "grupal" and integrantes_procesados > 0:
-        messages.success(request, f"Te has registrado exitosamente junto con {integrantes_procesados} integrantes más como {tipo} en el evento {evento.eve_nombre}.")
+        messages.success(
+            request,
+            f"Te has registrado exitosamente junto con {integrantes_procesados} integrantes más como {tipo} en el evento {evento.eve_nombre}."
+        )
     else:
         messages.success(request, f"Te has registrado exitosamente como {tipo} en el evento {evento.eve_nombre}.")
-    
+
     return redirect('ver_eventos')
+
 
 def inscribir_otro_expositor(request, eve_id, codigo):
     evento = get_object_or_404(Evento, pk=eve_id)
@@ -1014,7 +1178,7 @@ def confirmar_registro(request, token):
 def registrarse_admin_evento(request):
     codigo = request.GET.get('codigo', '').strip()
     invitacion = CodigoInvitacionAdminEvento.objects.filter(codigo=codigo).first()
-    if not invitacion or invitacion.estado != 'activo' or invitacion.fecha_expiracion < timezone.now():
+    if not invitacion or invitacion.estado.lower() != 'activo' or invitacion.fecha_expiracion < timezone.now():
         return render(request, 'registro_admin_evento_invalido.html', {'razon': 'El código es inválido, expirado o ya fue usado.'})
 
     if request.method == 'POST':

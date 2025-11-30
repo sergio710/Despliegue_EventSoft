@@ -10,7 +10,7 @@ from app_participantes.models import ParticipanteEvento, Participante
 from app_usuarios.models import Usuario
 import os
 from django.conf import settings
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib import colors
@@ -21,32 +21,30 @@ from reportlab.lib.styles import ParagraphStyle
 def calcular_y_guardar_nota_general(participante, evento):
     criterios = Criterio.objects.filter(cri_evento_fk=evento)
     peso_total = sum(c.cri_peso for c in criterios) or 1
-    
+
     calificaciones = Calificacion.objects.filter(
         participante=participante,
         criterio__cri_evento_fk=evento
     ).select_related('criterio')
-    
+
     evaluadores_ids = set(c.evaluador_id for c in calificaciones)
     num_evaluadores = len(evaluadores_ids)
-    
+
     if num_evaluadores > 0:
         puntaje_ponderado = sum(
             c.cal_valor * c.criterio.cri_peso for c in calificaciones
         ) / (peso_total * num_evaluadores)
-        
+
         participante_evento = ParticipanteEvento.objects.get(
             participante=participante,
             evento=evento
         )
-        participante_evento.par_eve_valor = round(puntaje_ponderado, 2)
+        participante_evento.par_eve_valor = round(puntaje_ponderado, 1)
         participante_evento.save()
-        
-        return round(puntaje_ponderado, 2)
-    
+
+        return round(puntaje_ponderado, 1)
+
     return 0
-
-
 
 def obtener_puesto_participante(participante, evento):
     """
@@ -65,9 +63,6 @@ def obtener_puesto_participante(participante, evento):
             return i
     
     return None  # No encontrado o sin calificación
-
-
-
 
 @login_required
 @user_passes_test(es_evaluador, login_url='login')
@@ -216,6 +211,20 @@ def eliminar_item(request, criterio_id):
     messages.success(request, 'Ítem eliminado correctamente.')
     return redirect('gestionar_items_evaluador', eve_id=evento_id)
 
+@login_required
+@user_passes_test(es_evaluador, login_url='login')
+def instrumento_evaluacion(request, evento_id):
+    evaluador = request.user.evaluador
+    evento = get_object_or_404(Evento, pk=evento_id)
+    inscrito = EvaluadorEvento.objects.filter(evaluador=evaluador, evento=evento).exists()
+    if not inscrito:
+        messages.warning(request, "No estás inscrito en este evento.")
+        return redirect('dashboard_evaluador', evento_id=evento_id)
+    criterios = Criterio.objects.filter(cri_evento_fk=evento)
+    return render(request, 'instrumento_evaluacion_evaluador.html', {
+        'evento': evento,
+        'criterios': criterios,
+    })
 
 @login_required
 @user_passes_test(es_evaluador, login_url='login')
@@ -231,41 +240,137 @@ def lista_participantes(request, eve_id):
         messages.warning(request, "Este evento aún no tiene criterios definidos.")
         return redirect('gestionar_items_evaluador', eve_id=eve_id)
 
-    # Obtener todos los participantes aprobados
+    from app_participantes.models import Proyecto
+
+    # 1) Participantes aprobados (fila principal, con su proyecto principal si lo hay)
     participantes_evento = ParticipanteEvento.objects.filter(
         evento=evento,
         par_eve_estado='Aprobado'
     ).select_related('participante__usuario', 'proyecto')
 
-    # Obtener todos los participantes que ya fueron calificados por este evaluador
-    calificaciones = Calificacion.objects.filter(
-        evaluador=evaluador,
-        criterio__cri_evento_fk=evento
-    ).values_list('participante_id', flat=True).distinct()
+    criterios_evento = Criterio.objects.filter(cri_evento_fk=evento)
+    total_criterios = criterios_evento.count()
 
-    calificados_ids = set(calificaciones)
+    participantes_data = {}
 
-    # Agrupar participantes por proyecto
-    proyectos = {}
+    # ---- base por participante ----
     for pe in participantes_evento:
-        proyecto = pe.proyecto
-        if proyecto not in proyectos:
-            proyectos[proyecto] = []
-        proyectos[proyecto].append(pe)
+        p = pe.participante
+        if p.id not in participantes_data:
+            participantes_data[p.id] = {
+                'participante': p,
+                'principal_proyecto': pe.proyecto,   # puede ser None
+                'proyectos_extra': set(),
+                'codigo': pe.codigo,
+            }
 
-    # Determinar si cada proyecto ya fue calificado (si al menos un miembro fue calificado)
+    # ---- proyectos creados por cada participante (principal + extras) ----
+    for p_id, data in list(participantes_data.items()):
+        p = data['participante']
+
+        creados = Proyecto.objects.filter(
+            evento=evento,
+            creador=p
+        ).order_by('fecha_subida', 'id')
+
+        principal = data['principal_proyecto']
+        extras = set()
+
+        for pr in creados:
+            if principal and pr.id == principal.id:
+                continue
+            extras.add(pr)
+
+        data['proyectos_extra'] = extras
+
+    # ---- proyectos del líder para integrantes grupales ----
+    for p_id, data in list(participantes_data.items()):
+        codigo = data['codigo']
+        if not codigo:
+            continue
+
+        lider_ids = Proyecto.objects.filter(
+            evento=evento
+        ).exclude(creador__isnull=True).values_list('creador_id', flat=True)
+
+        pe_lider = ParticipanteEvento.objects.filter(
+            evento=evento,
+            codigo=codigo,
+            participante_id__in=lider_ids
+        ).first()
+
+        if not pe_lider:
+            continue
+
+        proyectos_lider = Proyecto.objects.filter(
+            evento=evento,
+            creador_id=pe_lider.participante_id
+        ).order_by('fecha_subida', 'id')
+
+        principal = data['principal_proyecto']
+        extras = data['proyectos_extra']
+
+        for pr in proyectos_lider:
+            if principal and pr.id == principal.id:
+                continue
+            extras.add(pr)
+
+        data['proyectos_extra'] = extras
+
+    # ---- lista final de proyectos por participante ----
+    for data in participantes_data.values():
+        proyectos = []
+        if data['principal_proyecto']:
+            proyectos.append(data['principal_proyecto'])
+        extras_ordenados = sorted(
+            list(data['proyectos_extra']),
+            key=lambda pr: (pr.fecha_subida, pr.id)
+        )
+        proyectos.extend(extras_ordenados)
+        data['proyectos'] = proyectos
+
+    # ---- participantes calificados: tienen calificación en TODOS los criterios ----
+    calificados_ids = set()
+
+    for p_id, data in participantes_data.items():
+        p = data['participante']
+        num_califs = Calificacion.objects.filter(
+            evaluador=evaluador,
+            participante=p,
+            criterio__cri_evento_fk=evento
+        ).values('criterio_id').distinct().count()
+
+        if num_califs == total_criterios and total_criterios > 0:
+            calificados_ids.add(p_id)
+
+    # Para grupales: si un integrante del código está calificado,
+    # marcar a todos los del mismo código como calificados también.
+    codigo_to_part_ids = {}
+    for p_id, data in participantes_data.items():
+        codigo = data['codigo']
+        if not codigo:
+            continue
+        codigo_to_part_ids.setdefault(codigo, set()).add(p_id)
+
+    for codigo, ids in codigo_to_part_ids.items():
+        # si alguno del grupo está en calificados_ids, añadir el resto
+        if any(pid in calificados_ids for pid in ids):
+            calificados_ids.update(ids)
+
+    # ---- proyectos calificados: cualquiera cuyo dueño esté calificado ----
     proyectos_calificados = set()
-    for proyecto, participantes in proyectos.items():
-        if any(p.participante.id in calificados_ids for p in participantes):
-            proyectos_calificados.add(proyecto)
+    for p_id, data in participantes_data.items():
+        if p_id in calificados_ids:
+            for pr in data['proyectos']:
+                proyectos_calificados.add(pr.id)
 
     context = {
-        'participantes': participantes_evento,
         'evento': evento,
+        'participantes_data': participantes_data.values(),
         'proyectos_calificados': proyectos_calificados,
+        'calificados_ids': calificados_ids,
     }
     return render(request, 'lista_participantes_evaluador.html', context)
-
 
 @login_required
 @user_passes_test(es_evaluador, login_url='login')
@@ -280,7 +385,9 @@ def calificar_participante(request, eve_id, participante_id):
     except (EvaluadorEvento.DoesNotExist, Evaluador.DoesNotExist):
         messages.error(request, "No estás inscrito como evaluador en este evento.")
         return redirect('dashboard_evaluador')
+
     participante = get_object_or_404(Participante, pk=participante_id)
+
     participacion = ParticipanteEvento.objects.filter(
         evento=evento,
         participante=participante,
@@ -289,49 +396,87 @@ def calificar_participante(request, eve_id, participante_id):
     if not participacion:
         messages.error(request, "Este participante no está aprobado para ser calificado en este evento.")
         return redirect('lista_participantes_evaluador', eve_id=eve_id)
+
     criterios = Criterio.objects.filter(cri_evento_fk=evento)
-    evaluador = request.user.evaluador
-    if request.method == 'POST':
+
+    if request.method == "POST":
         for criterio in criterios:
-            valor = request.POST.get(f'criterio_{criterio.cri_id}')
-            if valor:
-                try:
-                    valor_int = int(valor)
-                    if 1 <= valor_int <= 5:
-                        calificacion, created = Calificacion.objects.get_or_create(
-                            evaluador=evaluador,
-                            criterio=criterio,
-                            participante=participante,
-                            defaults={'cal_valor': valor_int}
-                        )
-                        if not created:
-                            calificacion.cal_valor = valor_int
-                            calificacion.save()
-                    else:
-                        messages.error(request, f"El valor de '{criterio.cri_descripcion}' debe estar entre 1 y 5.")
-                        return redirect(request.path)
-                except ValueError:
-                    messages.error(request, f"Valor inválido para '{criterio.cri_descripcion}'.")
+            valor = request.POST.get(f"criterio_{criterio.cri_id}")
+            observacion = request.POST.get(f"obs_{criterio.cri_id}", "").strip()
+
+            try:
+                valor_int = int(valor)
+                if 1 <= valor_int <= 5:
+                    calificacion, created = Calificacion.objects.get_or_create(
+                        evaluador=evaluador,
+                        criterio=criterio,
+                        participante=participante,
+                        defaults={'cal_valor': valor_int, 'cal_observacion': observacion or None}
+                    )
+                    if not created:
+                        calificacion.cal_valor = valor_int
+                        calificacion.cal_observacion = observacion or None
+                    calificacion.save()
+                else:
+                    messages.error(request, f"El valor de {criterio.cri_descripcion} debe estar entre 1 y 5.")
                     return redirect(request.path)
-    
-        # Calcular nota general para este participante
+            except (TypeError, ValueError):
+                messages.error(request, f"Valor inválido para {criterio.cri_descripcion}.")
+                return redirect(request.path)
+
+        # Recalcular nota general del participante actual (1 decimal)
         nota = calcular_y_guardar_nota_general(participante, evento)
 
-        # Propagar calificación al proyecto y demás integrantes si es grupal
-        if participacion.proyecto:
-            proyecto = participacion.proyecto
-            proyecto.pro_valor = nota
-            proyecto.save()
-        
-            # Actualizar todos los integrantes del proyecto
-            integrantes = ParticipanteEvento.objects.filter(
-                proyecto=proyecto,
-                par_eve_estado='Aprobado'
+        from app_participantes.models import Proyecto
+
+        # 1) Caso individual (sin código de grupo):
+        #    aplicar la nota a TODOS los proyectos creados por este participante en el evento.
+        if not participacion.codigo:
+            proyectos_participante = Proyecto.objects.filter(
+                evento=evento,
+                creador=participante
             )
-            for integrante in integrantes:
-                integrante.par_eve_valor = nota
-                integrante.save()
-    
+            for proyecto in proyectos_participante:
+                proyecto.pro_valor = round(nota, 1)
+                proyecto.save()
+
+        else:
+            # 2) Caso grupal: un solo integrante calificado basta.
+
+            # a) Identificar al líder (creador de proyectos en este evento dentro del grupo).
+            lider_ids = Proyecto.objects.filter(
+                evento=evento
+            ).exclude(creador__isnull=True).values_list('creador_id', flat=True)
+
+            pe_lider = ParticipanteEvento.objects.filter(
+                evento=evento,
+                codigo=participacion.codigo,
+                participante_id__in=lider_ids
+            ).first()
+
+            # a1) Participantes del grupo (mismo código, aprobados)
+            integrantes_grupo = ParticipanteEvento.objects.filter(
+                evento=evento,
+                codigo=participacion.codigo,
+                par_eve_estado='Aprobado'
+            ).select_related('participante')
+
+            for pe in integrantes_grupo:
+                pe.par_eve_valor = round(nota, 1)
+                pe.save()
+                # Recalcular y guardar nota general individual según calificaciones existentes
+                calcular_y_guardar_nota_general(pe.participante, evento)
+
+            # a2) Proyectos del grupo: todos los proyectos del líder en este evento
+            if pe_lider:
+                proyectos_grupo = Proyecto.objects.filter(
+                    evento=evento,
+                    creador_id=pe_lider.participante_id
+                )
+                for proyecto in proyectos_grupo:
+                    proyecto.pro_valor = round(nota, 1)
+                    proyecto.save()
+
         messages.success(request, "Calificaciones guardadas exitosamente.")
         return redirect('lista_participantes_evaluador', eve_id=eve_id)
 
@@ -340,7 +485,6 @@ def calificar_participante(request, eve_id, participante_id):
         'participante': participante,
         'evento': evento,
     })
-
 
 @login_required
 @user_passes_test(es_evaluador, login_url='login')
@@ -359,41 +503,106 @@ def ver_tabla_posiciones(request, eve_id):
     criterios = Criterio.objects.filter(cri_evento_fk=evento)
     peso_total = sum(c.cri_peso for c in criterios) or 1
 
-    # Incluir el proyecto en el select_related
+    from app_participantes.models import Proyecto
+
     participantes_evento = ParticipanteEvento.objects.filter(
         evento=evento,
         par_eve_estado='Aprobado'
-    ).select_related('participante', 'proyecto')  # 👈 Clave: agregar 'proyecto'
+    ).select_related('participante__usuario', 'proyecto')
+
+    datos = {}
+
+    for pe in participantes_evento:
+        p = pe.participante
+        if p.id not in datos:
+            if pe.par_eve_valor is not None:
+                puntaje_ponderado = pe.par_eve_valor
+            else:
+                calificaciones = Calificacion.objects.filter(
+                    participante=p,
+                    criterio__cri_evento_fk=evento
+                ).select_related('criterio')
+                evaluadores_ids = set(c.evaluador_id for c in calificaciones)
+                num_evaluadores = len(evaluadores_ids)
+                if num_evaluadores > 0:
+                    puntaje_ponderado = sum(
+                        c.cal_valor * c.criterio.cri_peso for c in calificaciones
+                    ) / (peso_total * num_evaluadores)
+                    puntaje_ponderado = round(puntaje_ponderado, 2)
+                    pe.par_eve_valor = puntaje_ponderado
+                    pe.save()
+                else:
+                    puntaje_ponderado = 0
+
+            datos[p.id] = {
+                'participante': p,
+                'puntaje': puntaje_ponderado,
+                'principal_proyecto': pe.proyecto,
+                'proyectos_extra': set(),
+                'codigo': pe.codigo,
+            }
+
+    for p_id, info in list(datos.items()):
+        p = info['participante']
+        creados = Proyecto.objects.filter(
+            evento=evento,
+            creador=p
+        ).order_by('fecha_subida', 'id')
+
+        principal = info['principal_proyecto']
+        extras = set()
+        for pr in creados:
+            if principal and pr.id == principal.id:
+                continue
+            extras.add(pr)
+
+        info['proyectos_extra'] = extras
+
+    for p_id, info in list(datos.items()):
+        codigo = info['codigo']
+        if not codigo:
+            continue
+
+        lider_ids = Proyecto.objects.filter(
+            evento=evento
+        ).exclude(creador__isnull=True).values_list('creador_id', flat=True)
+
+        pe_lider = ParticipanteEvento.objects.filter(
+            evento=evento,
+            codigo=codigo,
+            participante_id__in=lider_ids
+        ).first()
+        if not pe_lider:
+            continue
+
+        proyectos_lider = Proyecto.objects.filter(
+            evento=evento,
+            creador_id=pe_lider.participante_id
+        ).order_by('fecha_subida', 'id')
+
+        principal = info['principal_proyecto']
+        extras = info['proyectos_extra']
+        for pr in proyectos_lider:
+            if principal and pr.id == principal.id:
+                continue
+            extras.add(pr)
+        info['proyectos_extra'] = extras
 
     posiciones = []
-    for pe in participantes_evento:
-        participante = pe.participante
-        
-        # Si ya tenemos la nota guardada, la usamos; si no, la calculamos
-        if pe.par_eve_valor is not None:
-            puntaje_ponderado = pe.par_eve_valor
-        else:
-            calificaciones = Calificacion.objects.filter(
-                participante=participante,
-                criterio__cri_evento_fk=evento
-            ).select_related('criterio')
-            evaluadores_ids = set(c.evaluador_id for c in calificaciones)
-            num_evaluadores = len(evaluadores_ids)
-            if num_evaluadores > 0:
-                puntaje_ponderado = sum(
-                    c.cal_valor * c.criterio.cri_peso for c in calificaciones
-                ) / (peso_total * num_evaluadores)
-                puntaje_ponderado = round(puntaje_ponderado, 2)
-                pe.par_eve_valor = puntaje_ponderado
-                pe.save()
-            else:
-                puntaje_ponderado = 0
-
-        # Guardar también el proyecto
+    for info in datos.values():
+        proyectos = []
+        if info['principal_proyecto']:
+            proyectos.append(info['principal_proyecto'])
+        extras_ordenados = sorted(
+            list(info['proyectos_extra']),
+            key=lambda pr: (pr.fecha_subida, pr.id)
+        )
+        proyectos.extend(extras_ordenados)
         posiciones.append({
-            'participante': participante,
-            'puntaje': puntaje_ponderado,
-            'proyecto': pe.proyecto  # 👈 Aquí está el dato clave
+            'participante': info['participante'],
+            'puntaje': info['puntaje'],
+            'proyectos': proyectos,
+            'codigo': info['codigo'],
         })
 
     posiciones.sort(key=lambda x: x['puntaje'], reverse=True)
@@ -411,35 +620,109 @@ def descargar_tabla_posiciones_pdf(request, eve_id):
         evaluador = request.user.evaluador
         inscripcion = EvaluadorEvento.objects.get(evaluador=evaluador, evento=evento)
         if inscripcion.eva_eve_estado != 'Aprobado':
-            messages.warning(request, "No tienes acceso a este evento porque tu inscripción no está aprobada.")
+            messages.warning(request, "Tu inscripción a este evento aún no ha sido aprobada.")
             return redirect('dashboard_evaluador')
     except (EvaluadorEvento.DoesNotExist, Evaluador.DoesNotExist):
         messages.error(request, "No estás inscrito en este evento.")
         return redirect('dashboard_evaluador')
 
-    # Obtener participantes calificados y ordenados
     participantes_evento = ParticipanteEvento.objects.filter(
         evento=evento,
         par_eve_estado='Aprobado',
         par_eve_valor__isnull=False
-    ).select_related('participante__usuario', 'proyecto').order_by('-par_eve_valor')
+    ).select_related('participante__usuario', 'proyecto')
 
-    # Crear la respuesta HTTP con el contenido PDF
+    from app_participantes.models import Proyecto
+
+    datos = {}
+    for pe in participantes_evento:
+        p = pe.participante
+        if p.id not in datos:
+            datos[p.id] = {
+                'participante': p,
+                'puntaje': pe.par_eve_valor,
+                'principal_proyecto': pe.proyecto,
+                'proyectos_extra': set(),
+                'codigo': pe.codigo,
+            }
+
+    for p_id, info in list(datos.items()):
+        p = info['participante']
+        creados = Proyecto.objects.filter(
+            evento=evento,
+            creador=p
+        ).order_by('fecha_subida', 'id')
+
+        principal = info['principal_proyecto']
+        extras = set()
+        for pr in creados:
+            if principal and pr.id == principal.id:
+                continue
+            extras.add(pr)
+        info['proyectos_extra'] = extras
+
+    for p_id, info in list(datos.items()):
+        codigo = info['codigo']
+        if not codigo:
+            continue
+        lider_ids = Proyecto.objects.filter(
+            evento=evento
+        ).exclude(creador__isnull=True).values_list('creador_id', flat=True)
+
+        pe_lider = ParticipanteEvento.objects.filter(
+            evento=evento,
+            codigo=codigo,
+            participante_id__in=lider_ids
+        ).first()
+        if not pe_lider:
+            continue
+
+        proyectos_lider = Proyecto.objects.filter(
+            evento=evento,
+            creador_id=pe_lider.participante_id
+        ).order_by('fecha_subida', 'id')
+
+        principal = info['principal_proyecto']
+        extras = info['proyectos_extra']
+        for pr in proyectos_lider:
+            if principal and pr.id == principal.id:
+                continue
+            extras.add(pr)
+        info['proyectos_extra'] = extras
+
+    posiciones = []
+    for info in datos.values():
+        proyectos = []
+        if info['principal_proyecto']:
+            proyectos.append(info['principal_proyecto'])
+        extras_ordenados = sorted(
+            list(info['proyectos_extra']),
+            key=lambda pr: (pr.fecha_subida, pr.id)
+        )
+        proyectos.extend(extras_ordenados)
+        posiciones.append({
+            'participante': info['participante'],
+            'puntaje': info['puntaje'],
+            'proyectos': proyectos,
+            'codigo': info['codigo'],
+        })
+
+    posiciones.sort(key=lambda x: x['puntaje'], reverse=True)
+
+    # --- PDF landscape ---
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="tabla_posiciones_{evento.eve_nombre}.pdf"'
 
-    # Crear el documento PDF
-    doc = SimpleDocTemplate(response, pagesize=letter)
+    doc = SimpleDocTemplate(response, pagesize=landscape(letter))
     elements = []
 
-    # Estilos
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
         spaceAfter=30,
-        alignment=1,  # Centrado
+        alignment=1,
     )
     subtitle_style = ParagraphStyle(
         'CustomSubtitle',
@@ -449,61 +732,63 @@ def descargar_tabla_posiciones_pdf(request, eve_id):
         alignment=1,
     )
 
-    # Título
-    elements.append(Paragraph(f"Tabla de Posiciones", title_style))
+    elements.append(Paragraph("Tabla de Posiciones", title_style))
     elements.append(Paragraph(f"Evento: {evento.eve_nombre}", subtitle_style))
     elements.append(Spacer(1, 20))
 
-    # Preparar datos para la tabla
-    data = [["Posición", "Nombre del Participante", "Correo", "Proyecto Grupal / Individual", "Puntaje"]]
+    data = [["Posición", "Nombre del Participante", "Correo",
+             "Tipo de participación", "Proyectos", "Puntaje"]]
 
-    for i, pe in enumerate(participantes_evento, start=1):
-        nombre = f"{pe.participante.usuario.first_name} {pe.participante.usuario.last_name}"
-        correo = pe.participante.usuario.email
-        proyecto = pe.proyecto.titulo if pe.proyecto else "Individual"
-        puntaje = f"{pe.par_eve_valor:.2f}"
+    for i, pos in enumerate(posiciones, start=1):
+        p = pos['participante']
+        nombre = f"{p.usuario.first_name} {p.usuario.last_name}"
+        correo = p.usuario.email
+        tipo = "Grupal" if pos['codigo'] else "Individual"
+        if pos['proyectos']:
+            nombres_proyectos = " / ".join(pr.titulo for pr in pos['proyectos'])
+        else:
+            nombres_proyectos = "Individual"
+        proyectos_par = Paragraph(nombres_proyectos, styles['Normal'])
+        puntaje = f"{pos['puntaje']:.1f}"
 
-        # Usar Paragraph para permitir saltos de línea si es necesario
-        data.append([str(i), nombre, correo, Paragraph(proyecto, styles['Normal']), puntaje])
+        data.append([str(i), nombre, correo, tipo, proyectos_par, puntaje])
 
-    # Ajustar anchos de columna para evitar desbordamiento
     col_widths = [
-        0.8*inch,  # Posición
-        2.2*inch,  # Nombre
-        2.0*inch,  # Correo
-        2.5*inch,  # Tipo de Proyecto (más ancho)
-        0.8*inch,  # Puntaje
+        0.8*inch,
+        2.1*inch,
+        2.0*inch,
+        1.6*inch,
+        3.0*inch,
+        0.7*inch,
     ]
 
-    # Crear la tabla
     table = Table(data, colWidths=col_widths)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('ROWHEIGHT', (0, 1), (-1, -1), 25),
     ]))
 
     elements.append(table)
-
-    # Generar el PDF
     doc.build(elements)
-
     return response
 
 @login_required
 @user_passes_test(es_evaluador, login_url='login')
-def informacion_detallada(request, eve_id):   
+def informacion_detallada(request, eve_id):
     evaluador = request.user.evaluador
     evento = get_object_or_404(Evento, pk=eve_id)
+
     try:
-        evaluador = request.user.evaluador
         inscripcion = EvaluadorEvento.objects.get(evaluador=evaluador, evento=evento)
         if inscripcion.eva_eve_estado != 'Aprobado':
             messages.warning(request, "No tienes acceso a este evento porque tu inscripción no está aprobada.")
@@ -511,48 +796,81 @@ def informacion_detallada(request, eve_id):
     except (EvaluadorEvento.DoesNotExist, Evaluador.DoesNotExist):
         messages.error(request, "No estás inscrito en este evento.")
         return redirect('dashboard_evaluador')
+
     criterios = Criterio.objects.filter(cri_evento_fk=evento)
     total_criterios = criterios.count()
+
     participantes_evento = ParticipanteEvento.objects.filter(
         evento=evento,
         par_eve_estado='Aprobado'
     ).select_related('participante__usuario')
+
     participantes_info = []
+
     for pe in participantes_evento:
         participante = pe.participante
+
+        # --- determinar participante de referencia para calificaciones grupales ---
+        participante_referencia = participante
+        if pe.codigo:
+            # buscar cualquier integrante del mismo código con calificaciones de este evaluador
+            pe_grupo = ParticipanteEvento.objects.filter(
+                evento=evento,
+                codigo=pe.codigo
+            ).select_related('participante')
+
+            ref_encontrado = None
+            for pe_g in pe_grupo:
+                if Calificacion.objects.filter(
+                    evaluador=evaluador,
+                    participante=pe_g.participante,
+                    criterio__cri_evento_fk=evento
+                ).exists():
+                    ref_encontrado = pe_g.participante
+                    break
+
+            if ref_encontrado:
+                participante_referencia = ref_encontrado
+
+        # --- calificaciones que este evaluador ha dado al participante/grupo ---
         calificaciones_actual = Calificacion.objects.filter(
             evaluador=evaluador,
-            participante=participante,
+            participante=participante_referencia,
             criterio__cri_evento_fk=evento
         ).select_related('criterio')
+
         total_aporte = 0
         calificaciones_lista = []
+
         for c in calificaciones_actual:
             aporte = (c.cal_valor * c.criterio.cri_peso) / 100
             total_aporte += aporte
             calificaciones_lista.append({
                 'criterio': c.criterio,
                 'cal_valor': c.cal_valor,
-                'aporte': round(aporte, 2)
+                'aporte': round(aporte, 2),
+                'observacion': c.cal_observacion,
             })
+
         evaluado = len(calificaciones_lista) == total_criterios
         promedio_ponderado = round(total_aporte, 2) if calificaciones_lista else None
+
         participantes_info.append({
             'participante': participante,
             'evaluado': evaluado,
             'promedio_ponderado': promedio_ponderado,
             'calificaciones': calificaciones_lista,
             'evaluados': len(calificaciones_lista),
-            'total_criterios': total_criterios
+            'total_criterios': total_criterios,
         })
+
     context = {
         'evaluador': evaluador,
         'evento': evento,
         'criterios': criterios,
-        'participantes_info': participantes_info
+        'participantes_info': participantes_info,
     }
     return render(request, 'info_detallada_evaluador.html', context)
-
 
 @login_required
 @user_passes_test(es_evaluador, login_url='login')
@@ -608,6 +926,44 @@ def modificar_inscripcion_evaluador(request, evento_id):
         'inscripcion': inscripcion
     })
 
+@login_required
+@user_passes_test(es_evaluador, login_url='login')
+def ver_evento_completo(request, evento_id):
+    request.user.evaluador
+    evento = get_object_or_404(Evento, pk=evento_id)
+    administrador = evento.eve_administrador_fk.usuario 
+    evento_categorias = EventoCategoria.objects.filter(evento=evento).select_related('categoria__cat_area_fk')
+    categorias_data = []
+    for ec in evento_categorias:
+        categoria = ec.categoria
+        area = categoria.cat_area_fk
+        categorias_data.append({
+            'cat_nombre': categoria.cat_nombre,
+            'cat_descripcion': categoria.cat_descripcion,
+            'are_nombre': area.are_nombre,
+            'are_descripcion': area.are_descripcion
+        })
+    evento_data = {
+        'eve_id': evento.eve_id,
+        'eve_nombre': evento.eve_nombre,
+        'eve_descripcion': evento.eve_descripcion,
+        'eve_ciudad': evento.eve_ciudad,
+        'eve_lugar': evento.eve_lugar,
+        'eve_fecha_inicio': evento.eve_fecha_inicio,
+        'eve_fecha_fin': evento.eve_fecha_fin,
+        'eve_estado': evento.eve_estado,
+        'eve_capacidad': evento.eve_capacidad,
+        'eve_tienecosto': evento.eve_tienecosto,
+        'tiene_costo_legible': 'Sí' if evento.eve_tienecosto.upper() == 'SI' else 'No',
+        'eve_programacion': evento.eve_programacion,
+        'eve_informacion_tecnica': evento.eve_informacion_tecnica,
+        'eve_memorias': evento.eve_memorias,
+        'adm_nombre': administrador.get_full_name(),
+        'adm_correo': administrador.email,
+        'categorias': categorias_data,
+    }
+
+    return render(request, 'evento_completo_evaluador.html', {'evento': evento_data})
 
 @login_required
 @user_passes_test(es_evaluador, login_url='login')
@@ -649,37 +1005,31 @@ def descargar_memorias_evaluador(request, evento_id):
 @login_required
 @user_passes_test(es_evaluador, login_url='login')
 def descargar_informacion_tecnica_evaluador(request, evento_id):
-    """Vista para descargar la información técnica de un evento como evaluador"""
-    evento = get_object_or_404(Evento, eve_id=evento_id)
     evaluador = request.user.evaluador
+    evento = get_object_or_404(Evento, pk=evento_id)
     
-    # Verificar que el evaluador esté inscrito en el evento
-    inscripcion = get_object_or_404(EvaluadorEvento, evaluador=evaluador, evento=evento)
+    # Verificar que el evaluador esté inscrito y aprobado
+    inscripcion = get_object_or_404(
+        EvaluadorEvento, 
+        evaluador=evaluador, 
+        evento=evento,
+        eva_eve_estado='Aprobado'
+    )
     
-    # Solo permitir si el estado no es "Pendiente"
-    if inscripcion.eva_eve_estado == 'Pendiente':
-        messages.error(request, "No puedes descargar información técnica mientras tu inscripción esté pendiente.")
-        return redirect('dashboard_evaluador')
-    
-    # Verificar que el archivo de información técnica exista
     if not evento.eve_informacion_tecnica:
-        messages.error(request, "Este evento no tiene información técnica disponible para descargar.")
-        return redirect('dashboard_evaluador')
-    
-    # Verificar que el archivo físico exista
-    if not os.path.exists(evento.eve_informacion_tecnica.path):
-        messages.error(request, "El archivo de información técnica no se encuentra disponible.")
+        messages.error(request, "Este evento no tiene información técnica disponible.")
         return redirect('dashboard_evaluador')
     
     try:
-        response = FileResponse(
-            open(evento.eve_informacion_tecnica.path, 'rb'),
-            as_attachment=True,
-            filename=f"InfoTecnica_{evento.eve_nombre}_{evento.eve_informacion_tecnica.name.split('/')[-1]}"
+        response = HttpResponse(
+            evento.eve_informacion_tecnica.read(),
+            content_type='application/pdf'
         )
+        filename = f'informacion_tecnica_{evento.eve_nombre.replace(" ", "_")}.pdf'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
-    except Exception as e:
-        messages.error(request, "Error al descargar el archivo de información técnica.")
+    except FileNotFoundError:
+        messages.error(request, "El archivo de información técnica no se encuentra disponible.")
         return redirect('dashboard_evaluador')
     
 @login_required
@@ -707,7 +1057,7 @@ def cargar_programacion_tecnica(request, evento_id):
     if request.method == 'POST':
         archivo = request.FILES.get('programacion_tecnica')
         if archivo:
-            evento.eve_programacion_tecnica = archivo
+            evento.eve_informacion_tecnica = archivo  # ← usar campo real
             evento.save()
             messages.success(request, "Programación técnica cargada correctamente.")
         else:

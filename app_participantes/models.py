@@ -14,8 +14,21 @@ class Proyecto(models.Model):
     descripcion = models.TextField(blank=True, null=True)
     archivo = models.FileField(upload_to="proyectos/", blank=True, null=True)
     fecha_subida = models.DateTimeField(auto_now_add=True)
-    estado = models.CharField(max_length=20, choices=[("Pendiente", "Pendiente"), ("Aprobado", "Aprobado"), ("Rechazado", "Rechazado")], default="Pendiente")
-    pro_valor = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    estado = models.CharField(
+        max_length=20,
+        choices=[("Pendiente", "Pendiente"), ("Aprobado", "Aprobado"), ("Rechazado", "Rechazado")],
+        default="Pendiente"
+    )
+    pro_valor = models.FloatField(null=True, blank=True)
+
+    # NUEVO: participante que creó este proyecto (líder en grupal, o dueño en individual)
+    creador = models.ForeignKey(
+        'app_participantes.Participante',
+        on_delete=models.CASCADE,
+        related_name='proyectos_creados',
+        null=True,
+        blank=True
+    )
 
     def __str__(self):
         return f"{self.titulo} ({self.evento.eve_nombre})"

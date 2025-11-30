@@ -144,16 +144,16 @@
                 <div class="card-body p-4">
                     {% if datos.par_eve_estado == 'Pendiente' %}
                         <div class="row g-3">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <a href="{% url 'modificar_preinscripcion_participante' datos.eve_id %}" 
-                                   class="btn btn-warning w-100 py-3 fw-medium">
+                                class="btn btn-warning w-100 py-3 fw-medium">
                                     <i class="bi bi-pencil-square me-2"></i>
                                     Modificar Inscripción
                                 </a>
                             </div>
-                            <div class="col-md-6">
-                                <form method="post" action="{% url 'cancelar_preinscripcion_participante'%}"
-                                      onsubmit="return confirm('¿Estás seguro de que deseas cancelar tu inscripción?');" class="w-100">
+                            <div class="col-md-4">
+                                <form method="post" action="{% url 'cancelar_preinscripcion_participante' %}"
+                                    onsubmit="return confirm('¿Estás seguro de que deseas cancelar tu inscripción?');" class="w-100">
                                     {% csrf_token %}
                                     <button type="submit" class="btn btn-outline-danger w-100 py-3 fw-medium">
                                         <i class="bi bi-x-circle me-2"></i>
@@ -161,32 +161,38 @@
                                     </button>
                                 </form>
                             </div>
+                            <div class="col-md-4">
+                                <a href="{% url 'gestionar_proyectos_evento' datos.eve_id %}"
+                                class="btn btn-outline-primary w-100 py-3 fw-medium">
+                                    <i class="bi bi-folder-edit me-2"></i>
+                                    Editar / Eliminar proyectos
+                                </a>
+                            </div>
                         </div>
 
                     {% elif datos.par_eve_estado == 'Aprobado' %}
                         <div class="row g-3">
                             <div class="col-lg-3 col-md-6">
-                                <a href="{% url 'ver_qr_participante' datos.eve_id  %}" 
+                                <a href="{% url 'ver_qr_participante' datos.eve_id %}" 
                                    class="btn btn-success w-100 py-3 fw-medium">
                                     <i class="bi bi-qr-code me-2"></i>
                                     Mi Código QR
                                 </a>
                             </div>
                             <div class="col-lg-3 col-md-6">
-                                <a href="{% url 'instrumento_evaluacion_participante'  datos.eve_id %}" 
+                                <a href="{% url 'instrumento_evaluacion_participante' datos.eve_id %}" 
                                    class="btn btn-info w-100 py-3 fw-medium">
                                     <i class="bi bi-file-earmark-check me-2"></i>
                                     Ver Criterios
                                 </a>
                             </div>
                             <div class="col-lg-3 col-md-6">
-                                <a href="{% url 'calificaciones_participante' datos.eve_id  %}" 
+                                <a href="{% url 'calificaciones_participante' datos.eve_id %}" 
                                    class="btn btn-primary w-100 py-3 fw-medium">
                                     <i class="bi bi-star me-2"></i>
                                     Mis Calificaciones
                                 </a>
                             </div>
-                            {% if datos.eve_programacion %}
                             <div class="col-lg-3 col-md-6">
                                 <a href="{% url 'ver_evento_completo_participante' datos.eve_id %}" 
                                    class="btn btn-outline-primary w-100 py-3 fw-medium">
@@ -196,37 +202,12 @@
                             </div>
                             <div class="col-lg-3 col-md-6">
                                 <a href="{% url 'mis_proyectos' %}" 
-                                class="btn btn-outline-info w-100 py-3 fw-medium">
+                                   class="btn btn-outline-info w-100 py-3 fw-medium">
                                     <i class="bi bi-folder2-open me-2"></i>
                                     Mis Proyectos
                                 </a>
                             </div>
-                            {% endif %}
                         </div>
-
-                        <!-- Segunda fila para archivos adicionales -->
-                        {% if datos.eve_informacion_tecnica or datos.eve_memorias %}
-                        <div class="row g-3 mt-2">
-                            {% if datos.eve_informacion_tecnica %}
-                            <div class="col-lg-6 col-md-6">
-                                <a href="{% url 'descargar_informacion_tecnica_participante' datos.eve_id %}" 
-                                   class="btn btn-outline-success w-100 py-3 fw-medium">
-                                    <i class="bi bi-file-earmark-arrow-down me-2"></i>
-                                    Descargar Info Técnica
-                                </a>
-                            </div>
-                            {% endif %}
-                            {% if datos.eve_memorias %}
-                            <div class="col-lg-6 col-md-6">
-                                <a href="{% url 'descargar_memorias_participante' datos.eve_id %}" 
-                                   class="btn btn-outline-warning w-100 py-3 fw-medium">
-                                    <i class="bi bi-journal-arrow-down me-2"></i>
-                                    Descargar Memorias
-                                </a>
-                            </div>
-                            {% endif %}
-                        </div>
-                        {% endif %}
 
                     {% elif datos.par_eve_estado == 'Rechazado' %}
                         <div class="text-center py-4">

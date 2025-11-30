@@ -63,5 +63,20 @@
             </a>
         </div>
     {% endif %}
+
+    <!-- Botón volver (siempre) -->
+    <div class="d-flex justify-content-center mt-4 mb-4">
+        {% if proyectos_data %}
+            <a href="{% url 'dashboard_participante_evento' proyectos_data.0.evento.eve_id %}"
+                class="btn btn-outline-secondary rounded-pill px-4 py-2">
+                <i class="bi bi-arrow-left-circle me-2"></i> Volver
+            </a>
+        {% else %}
+            <a href="{% url 'dashboard_participante_general' %}"
+                class="btn btn-outline-secondary rounded-pill px-4 py-2">
+                <i class="bi bi-arrow-left-circle me-2"></i> Volver
+            </a>
+        {% endif %}
+    </div>
 </div>
 {% endblock %}

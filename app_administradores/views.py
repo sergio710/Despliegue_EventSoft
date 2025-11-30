@@ -49,7 +49,7 @@ from django.contrib import messages
 from django.core.files.images import get_image_dimensions
 from django.conf import settings
 from django.utils import timezone
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib import colors
@@ -66,6 +66,8 @@ def dashboard_adminevento(request):
 @login_required
 @user_passes_test(es_administrador_evento, login_url='ver_eventos')
 def crear_evento(request):
+    areas = Area.objects.all()
+    
     if request.method == 'POST':
         nombre = request.POST.get('nombre')
         descripcion = request.POST.get('descripcion')
@@ -77,36 +79,91 @@ def crear_evento(request):
         tienecosto = request.POST.get('tienecosto')
         imagen = request.FILES.get('imagen')
         programacion = request.FILES.get('programacion')
-
-        if not (imagen and programacion):
-            messages.error(request, "Debes subir la imagen y el archivo de programación.")
-            areas = Area.objects.all()
-            return render(request, 'crear_evento.html', {'areas': areas})
+        categoria_ids = request.POST.getlist('categoria_id[]')
 
         estado = 'Pendiente'
+        
+        # Obtener las áreas seleccionadas para preservarlas
+        areas_seleccionadas = []
+        for cat_id in categoria_ids:
+            try:
+                categoria = Categoria.objects.select_related('cat_area_fk').get(cat_codigo=cat_id)
+                areas_seleccionadas.append({
+                    'area_id': categoria.cat_area_fk.are_codigo,
+                    'area_nombre': categoria.cat_area_fk.are_nombre,
+                    'categoria_id': categoria.cat_codigo,
+                    'categoria_nombre': categoria.cat_nombre
+                })
+            except Categoria.DoesNotExist:
+                pass
+        
+        # Contexto para preservar datos
+        context = {
+            'areas': areas,
+            'datos': {
+                'nombre': nombre,
+                'descripcion': descripcion,
+                'ciudad': ciudad,
+                'lugar': lugar,
+                'fecha_inicio': fecha_inicio,
+                'fecha_fin': fecha_fin,
+                'capacidad': capacidad,
+                'tienecosto': tienecosto,
+                'categorias_seleccionadas': categoria_ids,
+                'areas_categorias': areas_seleccionadas,
+                'imagen_nombre': imagen.name if imagen else None,
+                'programacion_nombre': programacion.name if programacion else None,
+            }
+        }
+        
         try:
             administrador = request.user.administrador
         except AdministradorEvento.DoesNotExist:
             messages.error(request, "Tu cuenta no está asociada como Administrador de Evento.")
-            return redirect('ver_eventos')
+            return render(request, 'crear_evento.html', context)
 
         # Validar código de invitación
         invitacion = CodigoInvitacionAdminEvento.objects.filter(usuario_asignado=request.user).order_by('-fecha_creacion').first()
         if not invitacion:
             messages.error(request, "No tienes un código de invitación válido asociado a tu cuenta.")
-            return redirect('dashboard_adminevento')
+            return render(request, 'crear_evento.html', context)
 
-        # Validar tiempo límite de creación (si existe)
+        # Validar tiempo límite de creación
         if invitacion.tiempo_limite_creacion:
-            
             if timezone.now() > invitacion.tiempo_limite_creacion:
                 messages.error(request, "El tiempo límite para crear eventos con tu código de invitación ha expirado.")
-                return redirect('dashboard_adminevento')
+                return render(request, 'crear_evento.html', context)
 
         # Validar cupos disponibles
         if invitacion.limite_eventos < 1:
             messages.error(request, "Ya has alcanzado el límite de eventos permitidos por tu código de invitación.")
-            return redirect('dashboard_adminevento')
+            return render(request, 'crear_evento.html', context)
+
+        # ✅ Validar que la fecha de fin sea igual o posterior a la de inicio
+        try:
+            fecha_inicio_dt = timezone.datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+            fecha_fin_dt = timezone.datetime.strptime(fecha_fin, "%Y-%m-%d").date()
+            if fecha_fin_dt < fecha_inicio_dt:
+                messages.error(request, "La fecha de fin no puede ser anterior a la fecha de inicio.")
+                return render(request, 'crear_evento.html', context)
+        except ValueError:
+            messages.error(request, "Formato de fecha inválido. Asegúrate de seleccionar correctamente las fechas.")
+            return render(request, 'crear_evento.html', context)
+
+        # Validar capacidad
+        try:
+            capacidad_int = int(capacidad)
+            if capacidad_int < 1:
+                messages.error(request, "La capacidad debe ser mayor a 0.")
+                return render(request, 'crear_evento.html', context)
+        except (ValueError, TypeError):
+            messages.error(request, "La capacidad debe ser un número válido.")
+            return render(request, 'crear_evento.html', context)
+
+        # Validar que se haya seleccionado al menos una categoría
+        if not categoria_ids:
+            messages.error(request, "Debes seleccionar al menos un área y categoría para el evento.")
+            return render(request, 'crear_evento.html', context)
 
         # Crear evento y descontar cupo
         evento = Evento.objects.create(
@@ -125,10 +182,11 @@ def crear_evento(request):
         )
         invitacion.limite_eventos -= 1
         invitacion.save()
-        categoria_ids = request.POST.getlist('categoria_id[]')
+
         for cat_id in categoria_ids:
             EventoCategoria.objects.create(evento=evento, categoria_id=cat_id)
-        # Enviar correo a los superadmin       
+
+        # Enviar correo a los superadmin
         try:
             rol_superadmin = Rol.objects.get(nombre__iexact='superadmin')
             usuarios_superadmin = RolUsuario.objects.filter(rol=rol_superadmin).select_related('usuario')
@@ -151,10 +209,12 @@ def crear_evento(request):
 
         messages.success(request, "Evento creado exitosamente.")
         return redirect(reverse('dashboard_adminevento'))
-    else:
-        areas = Area.objects.all()
-        return render(request, 'crear_evento.html', {'areas': areas})
     
+    else:
+        return render(request, 'crear_evento.html', {
+            'areas': areas,
+            'mostrar_mensajes_en_formulario': False
+        })
     
 @login_required
 @user_passes_test(es_administrador_evento, login_url='ver_eventos')
@@ -173,28 +233,53 @@ def listar_eventos(request):
     eventos = Evento.objects.filter(eve_administrador_fk=administrador)
     return render(request, 'listar_eventos.html', {'eventos': eventos})
 
-
 @login_required
 @user_passes_test(es_administrador_evento, login_url='ver_eventos')
 def modificar_evento(request, eve_id):
     evento = get_object_or_404(Evento, eve_id=eve_id)
 
     if request.method == 'POST':
-        evento.eve_nombre = request.POST['nombre']
-        evento.eve_descripcion = request.POST['descripcion']
-        evento.eve_ciudad = request.POST['ciudad']
-        evento.eve_lugar = request.POST['lugar']
-        evento.eve_fecha_inicio = request.POST['fecha_inicio']
-        evento.eve_fecha_fin = request.POST['fecha_fin']
-        evento.eve_capacidad = int(request.POST['capacidad'])
-        evento.eve_tienecosto = request.POST['tienecosto']
+        # Crear una copia temporal del evento para mantener los datos del POST
+        evento.eve_nombre = request.POST.get('nombre', evento.eve_nombre)
+        evento.eve_descripcion = request.POST.get('descripcion', evento.eve_descripcion)
+        evento.eve_ciudad = request.POST.get('ciudad', evento.eve_ciudad)
+        evento.eve_lugar = request.POST.get('lugar', evento.eve_lugar)
+        evento.eve_fecha_inicio = request.POST.get('fecha_inicio', evento.eve_fecha_inicio)
+        evento.eve_fecha_fin = request.POST.get('fecha_fin', evento.eve_fecha_fin)
+        evento.eve_capacidad = request.POST.get('capacidad', evento.eve_capacidad)
+        evento.eve_tienecosto = request.POST.get('tienecosto', evento.eve_tienecosto)
 
+        # ⚠️ Validación personalizada: fecha fin >= fecha inicio
+        if evento.eve_fecha_inicio and evento.eve_fecha_fin:
+            if evento.eve_fecha_fin < evento.eve_fecha_inicio:
+                messages.error(request, "La fecha de fin no puede ser anterior a la fecha de inicio.")
+                todas_areas = Area.objects.all()
+
+                # Reconstruir categorías para que se mantengan
+                categorias_info = []
+                categoria_ids = request.POST.getlist('categoria_id[]')
+                for cat_id in categoria_ids:
+                    categoria = Categoria.objects.filter(pk=cat_id).first()
+                    if categoria:
+                        categorias_info.append({
+                            'categoria_id': categoria.cat_codigo,
+                            'area_id': categoria.cat_area_fk_id
+                        })
+
+                return render(request, 'modificar_evento.html', {
+                    'evento': evento,
+                    'todas_areas': todas_areas,
+                    'categorias_info': categorias_info,
+                })
+
+        # Si se suben nuevos archivos, actualizarlos
         if 'imagen' in request.FILES:
             evento.eve_imagen = request.FILES['imagen']
 
         if 'programacion' in request.FILES:
             evento.eve_programacion = request.FILES['programacion']
 
+        # Actualizar categorías
         EventoCategoria.objects.filter(evento=evento).delete()
         categoria_ids = request.POST.getlist('categoria_id[]')
         for cat_id in categoria_ids:
@@ -206,14 +291,10 @@ def modificar_evento(request, eve_id):
 
     else:
         categorias_actuales = EventoCategoria.objects.filter(evento=evento).select_related('categoria__cat_area_fk')
-        categorias_info = []
-        for ec in categorias_actuales:
-            categoria = ec.categoria
-            area = categoria.cat_area_fk
-            categorias_info.append({
-                'categoria_id': categoria.cat_codigo,
-                'area_id': area.are_codigo,
-            })
+        categorias_info = [
+            {'categoria_id': ec.categoria.cat_codigo, 'area_id': ec.categoria.cat_area_fk.are_codigo}
+            for ec in categorias_actuales
+        ]
         todas_areas = Area.objects.all()
         return render(request, 'modificar_evento.html', {
             'evento': evento,
@@ -520,24 +601,39 @@ def gestion_participantes(request, eve_id):
 @user_passes_test(es_administrador_evento, login_url='ver_eventos')
 def detalle_participante(request, eve_id, participante_id):
     evento = get_object_or_404(Evento, pk=eve_id)
-    participante = get_object_or_404(Participante, pk=participante_id)
-    participante_evento = ParticipanteEvento.objects.select_related(
-        'participante__usuario', 'evento'
-    ).filter(evento=evento, participante=participante).first()
+    participante_evento = get_object_or_404(
+        ParticipanteEvento,
+        evento=evento,
+        participante__id=participante_id
+    )
+    participante = participante_evento.participante
+    usuario_participante = participante.usuario
 
-    if not participante_evento:
-        messages.error(request, "Participante no encontrado en este evento")
-        return redirect('ver_participantes_evento', eve_id=eve_id)
+    # TODOS los proyectos que este participante INSCRIBIÓ en este evento (principal + extras)
+    from app_participantes.models import Proyecto
+    proyectos_participante = Proyecto.objects.filter(
+        evento=evento,
+        creador=participante
+    )
+
+    # Si es proyecto grupal, obtener también a los demás integrantes del mismo código
+    integrantes_grupo = []
+    if participante_evento.codigo:
+        integrantes_grupo = (
+            ParticipanteEvento.objects
+            .filter(evento=evento, codigo=participante_evento.codigo)
+            .select_related('participante__usuario')
+        )
 
     if request.method == 'POST':
         nuevo_estado = request.POST.get('estado')
         if nuevo_estado:
-            usuario = participante.usuario
             enviar_qr = False
 
             if nuevo_estado == 'Aprobado':
+                # Generar o reutilizar QR para el principal
                 if not participante_evento.par_eve_qr:
-                    data_qr = f"Participante: {usuario.first_name} {usuario.last_name} - Evento: {evento.eve_nombre}"
+                    data_qr = f"Participante: {usuario_participante.first_name} {usuario_participante.last_name} - Evento: {evento.eve_nombre}"
                     img = qrcode.make(data_qr)
                     buffer = io.BytesIO()
                     img.save(buffer, format='PNG')
@@ -547,162 +643,86 @@ def detalle_participante(request, eve_id, participante_id):
                 else:
                     enviar_qr = True
 
-                participante_evento.par_eve_estado = nuevo_estado
+                participante_evento.par_eve_estado = 'Aprobado'
                 participante_evento.save()
 
-                # 🔹 Actualizar estado del proyecto asociado
-                if participante_evento.proyecto:
-                    participante_evento.proyecto.estado = nuevo_estado
-                    participante_evento.proyecto.save()
+                # Actualizar TODOS sus proyectos propios en este evento
+                Proyecto.objects.filter(evento=evento, creador=participante).update(estado='Aprobado')
 
-                # 🔹 NUEVO: Actualizar estado de todos los integrantes del proyecto grupal
-                if participante_evento.codigo:  # Si tiene código, es proyecto grupal
-                    # Buscar todos los participantes con el mismo código (mismo proyecto)
-                    integrantes_grupo = ParticipanteEvento.objects.filter(
+                # Si es grupal, aprobar a todos los integrantes del grupo
+                if participante_evento.codigo:
+                    grupo_qs = ParticipanteEvento.objects.filter(
                         evento=evento,
                         codigo=participante_evento.codigo
-                    ).exclude(participante=participante)  # Excluir el actual
-                    
-                    for integrante in integrantes_grupo:
-                        if integrante.par_eve_estado != 'Aprobado':  # Solo actualizar si no está ya aprobado
-                            # Generar QR para cada integrante
-                            if not integrante.par_eve_qr:
-                                data_qr_int = f"Participante: {integrante.participante.usuario.first_name} {integrante.participante.usuario.last_name} - Evento: {evento.eve_nombre}"
-                                img_int = qrcode.make(data_qr_int)
-                                buffer_int = io.BytesIO()
-                                img_int.save(buffer_int, format='PNG')
-                                file_name_int = f"qr_{get_random_string(8)}.png"
-                                integrante.par_eve_qr.save(file_name_int, ContentFile(buffer_int.getvalue()), save=False)
-                            
-                            integrante.par_eve_estado = nuevo_estado
-                            integrante.save()
-                            
-                            # Enviar correo a cada integrante
-                            if integrante.participante.usuario.email:
-                                cuerpo_html = render_to_string('correo_estado_participante.html', {
-                                    'evento': evento,
-                                    'participante': integrante.participante.usuario,
-                                    'nuevo_estado': nuevo_estado,
-                                })
-                                email = EmailMessage(
-                                    subject=f'Actualización de estado de tu inscripción como participante en {evento.eve_nombre}',
-                                    body=cuerpo_html,
-                                    to=[integrante.participante.usuario.email],
-                                )
-                                email.content_subtype = 'html'
-                                if integrante.par_eve_qr:
-                                    qr_path = integrante.par_eve_qr.path
-                                    email.attach_file(qr_path)
-                                email.send(fail_silently=True)
-                    
-                    messages.success(request, f"Inscripción aprobada junto con {integrantes_grupo.count()} integrantes más del proyecto grupal")
-                else:
-                    messages.success(request, "Inscripción aprobada")
+                    ).select_related('participante__usuario')
+
+                    for pe in grupo_qs:
+                        if pe.id == participante_evento.id:
+                            continue
+                        pe.par_eve_estado = 'Aprobado'
+                        if not pe.par_eve_qr:
+                            data_qr_int = f"Participante: {pe.participante.usuario.first_name} {pe.participante.usuario.last_name} - Evento: {evento.eve_nombre}"
+                            img_int = qrcode.make(data_qr_int)
+                            buffer_int = io.BytesIO()
+                            img_int.save(buffer_int, format='PNG')
+                            file_name_int = f"qr_{get_random_string(8)}.png"
+                            pe.par_eve_qr.save(file_name_int, ContentFile(buffer_int.getvalue()), save=False)
+                        pe.save()
+
+                        usuario_int = pe.participante.usuario
+                        if usuario_int and usuario_int.email:
+                            cuerpo_html_int = render_to_string('correo_estado_participante.html', {
+                                'evento': evento,
+                                'participante': usuario_int,
+                                'nuevo_estado': 'Aprobado',
+                            })
+                            email_int = EmailMessage(
+                                subject=f'Actualización de estado de tu inscripción como participante en {evento.eve_nombre}',
+                                body=cuerpo_html_int,
+                                to=[usuario_int.email],
+                            )
+                            email_int.content_subtype = 'html'
+                            if pe.par_eve_qr:
+                                qr_path_int = pe.par_eve_qr.path
+                                email_int.attach_file(qr_path_int)
+                            email_int.send(fail_silently=True)
+
+                messages.success(request, "Inscripción aprobada")
 
             elif nuevo_estado == 'Pendiente':
                 if participante_evento.par_eve_qr:
                     participante_evento.par_eve_qr.delete(save=False)
                     participante_evento.par_eve_qr = None
-                participante_evento.par_eve_estado = nuevo_estado
+                participante_evento.par_eve_estado = 'Pendiente'
                 participante_evento.save()
 
-                # 🔹 Actualizar proyecto también a pendiente
-                if participante_evento.proyecto:
-                    participante_evento.proyecto.estado = nuevo_estado
-                    participante_evento.proyecto.save()
+                # Proyectos propios vuelven a Pendiente
+                Proyecto.objects.filter(evento=evento, creador=participante).update(estado='Pendiente')
 
-                # 🔹 NUEVO: Actualizar estado de todos los integrantes del proyecto grupal
-                if participante_evento.codigo:  # Si tiene código, es proyecto grupal
-                    integrantes_grupo = ParticipanteEvento.objects.filter(
+                if participante_evento.codigo:
+                    ParticipanteEvento.objects.filter(
                         evento=evento,
                         codigo=participante_evento.codigo
-                    ).exclude(participante=participante)
-                    
-                    for integrante in integrantes_grupo:
-                        if integrante.par_eve_qr:
-                            integrante.par_eve_qr.delete(save=False)
-                            integrante.par_eve_qr = None
-                        integrante.par_eve_estado = nuevo_estado
-                        integrante.save()
-                        
-                        # Enviar correo a cada integrante
-                        if integrante.participante.usuario.email:
-                            cuerpo_html = render_to_string('correo_estado_participante.html', {
-                                'evento': evento,
-                                'participante': integrante.participante.usuario,
-                                'nuevo_estado': nuevo_estado,
-                            })
-                            email = EmailMessage(
-                                subject=f'Actualización de estado de tu inscripción como participante en {evento.eve_nombre}',
-                                body=cuerpo_html,
-                                to=[integrante.participante.usuario.email],
-                            )
-                            email.content_subtype = 'html'
-                            email.send(fail_silently=True)
-                    
-                    messages.info(request, f"Estado restablecido a pendiente junto con {integrantes_grupo.count()} integrantes más del proyecto grupal")
-                else:
-                    messages.info(request, "Estado restablecido a pendiente y QR eliminado")
+                    ).exclude(id=participante_evento.id).update(par_eve_estado='Pendiente')
+
+                messages.info(request, "Estado restablecido a pendiente")
 
             elif nuevo_estado == 'Rechazado':
-                # 🔹 Actualizar estado del proyecto antes de eliminar
-                if participante_evento.proyecto:
-                    participante_evento.proyecto.estado = nuevo_estado
-                    participante_evento.proyecto.save()
+                participante_evento.par_eve_estado = 'Rechazado'
+                participante_evento.save()
 
-                # 🔹 NUEVO: Actualizar/eliminar todos los integrantes del proyecto grupal
-                if participante_evento.codigo:  # Si tiene código, es proyecto grupal
-                    integrantes_grupo = ParticipanteEvento.objects.filter(
+                # Proyectos propios pasan a Rechazado
+                Proyecto.objects.filter(evento=evento, creador=participante).update(estado='Rechazado')
+
+                if participante_evento.codigo:
+                    ParticipanteEvento.objects.filter(
                         evento=evento,
                         codigo=participante_evento.codigo
-                    ).exclude(participante=participante)
-                    
-                    # Enviar correos y eliminar integrantes
-                    integrantes_eliminados = 0
-                    for integrante in integrantes_grupo:
-                        # Enviar correo antes de eliminar
-                        if integrante.participante.usuario.email:
-                            cuerpo_html = render_to_string('correo_estado_participante.html', {
-                                'evento': evento,
-                                'participante': integrante.participante.usuario,
-                                'nuevo_estado': nuevo_estado,
-                            })
-                            email = EmailMessage(
-                                subject=f'Actualización de estado de tu inscripción como participante en {evento.eve_nombre}',
-                                body=cuerpo_html,
-                                to=[integrante.participante.usuario.email],
-                            )
-                            email.content_subtype = 'html'
-                            email.send(fail_silently=True)
-                        
-                        # Eliminar inscripción del integrante
-                        participante_int = integrante.participante
-                        integrante.delete()
-                        
-                        # Eliminar participante si no tiene otras inscripciones
-                        otros_eventos = ParticipanteEvento.objects.filter(participante=participante_int).exists()
-                        if not otros_eventos:
-                            participante_int.delete()
-                        
-                        integrantes_eliminados += 1
-                    
-                    messages.warning(request, f"Inscripción rechazada junto con {integrantes_eliminados} integrantes más del proyecto grupal")
-                else:
-                    messages.warning(request, "Inscripción rechazada")
+                    ).exclude(id=participante_evento.id).update(par_eve_estado='Rechazado')
 
-                # Eliminar la inscripción principal
-                participante_evento.delete()
-                otros_eventos = ParticipanteEvento.objects.filter(participante=participante).exists()
-                if not otros_eventos:
-                    participante.delete()
-                    messages.warning(request, "Participante eliminado completamente")
-                    return redirect('ver_participantes_evento', eve_id=eve_id)
-                else:
-                    messages.warning(request, "Participante eliminado del evento")
-                    return redirect('ver_participantes_evento', eve_id=eve_id)
+                messages.warning(request, "Inscripción rechazada")
 
-            # Enviar correo al participante principal
-            usuario_participante = participante.usuario
+            # Correo al participante principal
             if usuario_participante and usuario_participante.email:
                 cuerpo_html = render_to_string('correo_estado_participante.html', {
                     'evento': evento,
@@ -726,6 +746,8 @@ def detalle_participante(request, eve_id, participante_id):
         'participante': participante_evento,
         'evento': evento,
         'eve_id': eve_id,
+        'proyectos_participante': proyectos_participante,
+        'integrantes_grupo': integrantes_grupo,
     })
 
 def descargar_documento_participante(request, eve_id, participante_id):
@@ -1107,40 +1129,117 @@ def ver_tabla_posiciones(request, eve_id):
     criterios = Criterio.objects.filter(cri_evento_fk=evento)
     peso_total = sum(c.cri_peso for c in criterios) or 1
 
-    # Obtener participantes aprobados y cargar proyecto
+    from app_participantes.models import Proyecto
+
+    # Participantes aprobados (PE principal)
     participantes_evento = ParticipanteEvento.objects.filter(
         evento=evento,
         par_eve_estado='Aprobado'
-    ).select_related('participante', 'proyecto')  # 👈 Agregar 'proyecto'
+    ).select_related('participante__usuario', 'proyecto')
 
-    posiciones = []
+    # --- construir estructura por participante ---
+    datos = {}
+
     for pe in participantes_evento:
-        participante = pe.participante
-        
-        # Si ya tenemos la nota guardada, la usamos; si no, la calculamos
-        if pe.par_eve_valor is not None:
-            puntaje_ponderado = pe.par_eve_valor
-        else:
-            calificaciones = Calificacion.objects.filter(
-                participante=participante,
-                criterio__cri_evento_fk=evento
-            ).select_related('criterio')
-            evaluadores_ids = set(c.evaluador_id for c in calificaciones)
-            num_evaluadores = len(evaluadores_ids)
-            if num_evaluadores > 0:
-                puntaje_ponderado = sum(
-                    c.cal_valor * c.criterio.cri_peso for c in calificaciones
-                ) / (peso_total * num_evaluadores)
-                puntaje_ponderado = round(puntaje_ponderado, 2)
-                pe.par_eve_valor = puntaje_ponderado
-                pe.save()
+        p = pe.participante
+        if p.id not in datos:
+            # calcular / usar nota
+            if pe.par_eve_valor is not None:
+                puntaje_ponderado = pe.par_eve_valor
             else:
-                puntaje_ponderado = 0
+                calificaciones = Calificacion.objects.filter(
+                    participante=p,
+                    criterio__cri_evento_fk=evento
+                ).select_related('criterio')
+                evaluadores_ids = set(c.evaluador_id for c in calificaciones)
+                num_evaluadores = len(evaluadores_ids)
+                if num_evaluadores > 0:
+                    puntaje_ponderado = sum(
+                        c.cal_valor * c.criterio.cri_peso for c in calificaciones
+                    ) / (peso_total * num_evaluadores)
+                    puntaje_ponderado = round(puntaje_ponderado, 2)
+                    pe.par_eve_valor = puntaje_ponderado
+                    pe.save()
+                else:
+                    puntaje_ponderado = 0
+
+            datos[p.id] = {
+                'participante': p,
+                'puntaje': puntaje_ponderado,
+                'principal_proyecto': pe.proyecto,
+                'proyectos_extra': set(),
+                'codigo': pe.codigo,
+            }
+
+    # proyectos creados por cada participante (principal + extras)
+    for p_id, info in list(datos.items()):
+        p = info['participante']
+        creados = Proyecto.objects.filter(
+            evento=evento,
+            creador=p
+        ).order_by('fecha_subida', 'id')
+
+        principal = info['principal_proyecto']
+        extras = set()
+
+        for pr in creados:
+            if principal and pr.id == principal.id:
+                continue
+            extras.add(pr)
+
+        info['proyectos_extra'] = extras
+
+    # proyectos del líder para integrantes grupales
+    for p_id, info in list(datos.items()):
+        codigo = info['codigo']
+        if not codigo:
+            continue
+
+        lider_ids = Proyecto.objects.filter(
+            evento=evento
+        ).exclude(creador__isnull=True).values_list('creador_id', flat=True)
+
+        pe_lider = ParticipanteEvento.objects.filter(
+            evento=evento,
+            codigo=codigo,
+            participante_id__in=lider_ids
+        ).first()
+
+        if not pe_lider:
+            continue
+
+        proyectos_lider = Proyecto.objects.filter(
+            evento=evento,
+            creador_id=pe_lider.participante_id
+        ).order_by('fecha_subida', 'id')
+
+        principal = info['principal_proyecto']
+        extras = info['proyectos_extra']
+
+        for pr in proyectos_lider:
+            if principal and pr.id == principal.id:
+                continue
+            extras.add(pr)
+
+        info['proyectos_extra'] = extras
+
+    # lista final de posiciones
+    posiciones = []
+    for info in datos.values():
+        proyectos = []
+        if info['principal_proyecto']:
+            proyectos.append(info['principal_proyecto'])
+        extras_ordenados = sorted(
+            list(info['proyectos_extra']),
+            key=lambda pr: (pr.fecha_subida, pr.id)
+        )
+        proyectos.extend(extras_ordenados)
 
         posiciones.append({
-            'participante': participante,
-            'puntaje': puntaje_ponderado,
-            'proyecto': pe.proyecto  # 👈 Guardar el proyecto
+            'participante': info['participante'],
+            'puntaje': info['puntaje'],
+            'proyectos': proyectos,          # lista de proyectos
+            'codigo': info['codigo'],        # para tipo de participación
         })
 
     posiciones.sort(key=lambda x: x['puntaje'], reverse=True)
@@ -1158,29 +1257,103 @@ def descargar_tabla_posiciones_pdf_admin(request, eve_id):
         messages.error(request, "No tienes permiso para acceder a este evento.")
         return redirect('dashboard_adminevento')
 
-    # Obtener participantes calificados y ordenados
     participantes_evento = ParticipanteEvento.objects.filter(
         evento=evento,
         par_eve_estado='Aprobado',
         par_eve_valor__isnull=False
-    ).select_related('participante__usuario', 'proyecto').order_by('-par_eve_valor')
+    ).select_related('participante__usuario', 'proyecto')
 
-    # Crear la respuesta HTTP con el contenido PDF
+    from app_participantes.models import Proyecto
+
+    datos = {}
+    for pe in participantes_evento:
+        p = pe.participante
+        if p.id not in datos:
+            datos[p.id] = {
+                'participante': p,
+                'puntaje': pe.par_eve_valor,
+                'principal_proyecto': pe.proyecto,
+                'proyectos_extra': set(),
+                'codigo': pe.codigo,
+            }
+
+    for p_id, info in list(datos.items()):
+        p = info['participante']
+        creados = Proyecto.objects.filter(
+            evento=evento,
+            creador=p
+        ).order_by('fecha_subida', 'id')
+
+        principal = info['principal_proyecto']
+        extras = set()
+        for pr in creados:
+            if principal and pr.id == principal.id:
+                continue
+            extras.add(pr)
+        info['proyectos_extra'] = extras
+
+    for p_id, info in list(datos.items()):
+        codigo = info['codigo']
+        if not codigo:
+            continue
+        lider_ids = Proyecto.objects.filter(
+            evento=evento
+        ).exclude(creador__isnull=True).values_list('creador_id', flat=True)
+
+        pe_lider = ParticipanteEvento.objects.filter(
+            evento=evento,
+            codigo=codigo,
+            participante_id__in=lider_ids
+        ).first()
+        if not pe_lider:
+            continue
+
+        proyectos_lider = Proyecto.objects.filter(
+            evento=evento,
+            creador_id=pe_lider.participante_id
+        ).order_by('fecha_subida', 'id')
+
+        principal = info['principal_proyecto']
+        extras = info['proyectos_extra']
+        for pr in proyectos_lider:
+            if principal and pr.id == principal.id:
+                continue
+            extras.add(pr)
+        info['proyectos_extra'] = extras
+
+    posiciones = []
+    for info in datos.values():
+        proyectos = []
+        if info['principal_proyecto']:
+            proyectos.append(info['principal_proyecto'])
+        extras_ordenados = sorted(
+            list(info['proyectos_extra']),
+            key=lambda pr: (pr.fecha_subida, pr.id)
+        )
+        proyectos.extend(extras_ordenados)
+        posiciones.append({
+            'participante': info['participante'],
+            'puntaje': info['puntaje'],
+            'proyectos': proyectos,
+            'codigo': info['codigo'],
+        })
+
+    posiciones.sort(key=lambda x: x['puntaje'], reverse=True)
+
+    # --- PDF landscape ---
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="tabla_posiciones_{evento.eve_nombre}.pdf"'
 
-    # Crear el documento PDF
-    doc = SimpleDocTemplate(response, pagesize=letter)
+    doc = SimpleDocTemplate(response, pagesize=landscape(letter))
     elements = []
 
-    # Estilos
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
         spaceAfter=30,
-        alignment=1,  # Centrado
+        alignment=1,
     )
     subtitle_style = ParagraphStyle(
         'CustomSubtitle',
@@ -1190,102 +1363,54 @@ def descargar_tabla_posiciones_pdf_admin(request, eve_id):
         alignment=1,
     )
 
-    # Título
-    elements.append(Paragraph(f"Tabla de Posiciones", title_style))
+    elements.append(Paragraph("Tabla de Posiciones", title_style))
     elements.append(Paragraph(f"Evento: {evento.eve_nombre}", subtitle_style))
     elements.append(Spacer(1, 20))
 
-    # Preparar datos para la tabla
-    data = [["Posición", "Nombre del Participante", "Correo", "Proyecto Grupal / Individual", "Puntaje"]]
+    data = [["Posición", "Nombre del Participante", "Correo",
+             "Tipo de participación", "Proyectos", "Puntaje"]]
 
-    for i, pe in enumerate(participantes_evento, start=1):
-        nombre = f"{pe.participante.usuario.first_name} {pe.participante.usuario.last_name}"
-        correo = pe.participante.usuario.email
-        proyecto = pe.proyecto.titulo if pe.proyecto else "Individual"
-        puntaje = f"{pe.par_eve_valor:.2f}"
+    for i, pos in enumerate(posiciones, start=1):
+        p = pos['participante']
+        nombre = f"{p.usuario.first_name} {p.usuario.last_name}"
+        correo = p.usuario.email
+        tipo = "Grupal" if pos['codigo'] else "Individual"
+        if pos['proyectos']:
+            nombres_proyectos = " / ".join(pr.titulo for pr in pos['proyectos'])
+        else:
+            nombres_proyectos = "Individual"
+        proyectos_par = Paragraph(nombres_proyectos, styles['Normal'])
+        puntaje = f"{pos['puntaje']:.1f}"
 
-        data.append([str(i), nombre, correo, Paragraph(proyecto, styles['Normal']), puntaje])
+        data.append([str(i), nombre, correo, tipo, proyectos_par, puntaje])
 
-    # Ajustar anchos de columna
     col_widths = [
-        0.8*inch,  # Posición
-        2.2*inch,  # Nombre
-        2.0*inch,  # Correo
-        2.5*inch,  # Proyecto Grupal / Individual (más ancho)
-        0.8*inch,  # Puntaje
+        0.8*inch,
+        2.1*inch,
+        2.0*inch,
+        1.6*inch,
+        3.0*inch,
+        0.7*inch,
     ]
 
-    # Crear la tabla
     table = Table(data, colWidths=col_widths)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('ROWHEIGHT', (0, 1), (-1, -1), 25),
     ]))
 
     elements.append(table)
-
-    # Generar el PDF
     doc.build(elements)
-
-    return response
-
-@login_required
-@user_passes_test(es_administrador_evento, login_url='ver_eventos')
-def descargar_tabla_posiciones_pdf(request, eve_id):
-    evento = get_object_or_404(Evento, pk=eve_id)
-
-    criterios = Criterio.objects.filter(cri_evento_fk=evento)
-    peso_total = sum(c.cri_peso for c in criterios) or 1
-
-    participantes_evento = ParticipanteEvento.objects.filter(
-        evento=evento, par_eve_estado='Aprobado'
-    ).select_related('participante')
-
-    posiciones = []
-    for pe in participantes_evento:
-        participante = pe.participante
-        calificaciones = Calificacion.objects.select_related('criterio').filter(
-            participante=participante,
-            criterio__cri_evento_fk=evento
-        )
-        evaluadores = set(c.evaluador_id for c in calificaciones)
-        num_evaluadores = len(evaluadores)
-        puntaje_ponderado = (
-            sum(c.cal_valor * c.criterio.cri_peso for c in calificaciones) /
-            (peso_total * num_evaluadores)
-        ) if num_evaluadores > 0 else 0
-        posiciones.append({
-            'participante': participante,
-            'puntaje': round(puntaje_ponderado, 2)
-        })
-
-    posiciones.sort(key=lambda x: x['puntaje'], reverse=True)
-
-    # Validar si hay datos
-    if not posiciones:
-        messages.warning(request, "No se puede descargar porque no hay información en la tabla.")
-        return redirect('tabla_posiciones_administrador', eve_id=eve_id)
-
-    # Renderizar PDF
-    template_path = 'tabla_posiciones_pdf.html'
-    context = {'evento': evento, 'posiciones': posiciones}
-    template = get_template(template_path)
-    html = template.render(context)
-
-    response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="tabla_posiciones_{evento.eve_id}.pdf"'
-
-    pisa_status = pisa.CreatePDF(html, dest=response)
-    if pisa_status.err:
-        return HttpResponse('Error al generar el PDF', status=500)
     return response
 
 @login_required
@@ -1293,42 +1418,82 @@ def descargar_tabla_posiciones_pdf(request, eve_id):
 def info_detallada_admin(request, eve_id):
     administrador = request.user.administrador
     evento = get_object_or_404(Evento, pk=eve_id)
+
     if evento.eve_administrador_fk != administrador:
         messages.error(request, "No tienes permisos para acceder a este evento.")
         return redirect('listar_eventos')
+
     if evento.eve_estado.lower() != 'aprobado':
         messages.error(request, "Solo puedes acceder a esta función si el evento está aprobado.")
         return redirect('listar_eventos')
+
     criterios = Criterio.objects.filter(cri_evento_fk=evento)
+    total_criterios = criterios.count()
+
     participantes_evento = ParticipanteEvento.objects.filter(
         evento=evento,
         par_eve_estado='Aprobado'
-    ).select_related('participante')
+    ).select_related('participante__usuario')
+
     participantes_info = []
+
     for pe in participantes_evento:
         participante = pe.participante
-        calificaciones = Calificacion.objects.select_related('criterio').filter(
-            participante=participante,
+
+        # -------- buscar participante de referencia (para grupales) --------
+        participante_referencia = participante
+
+        if pe.codigo:
+            # todos los integrantes del grupo
+            grupo = ParticipanteEvento.objects.filter(
+                evento=evento,
+                codigo=pe.codigo
+            ).select_related('participante')
+
+            # primero intenta encontrar alguien con calificaciones
+            ref = None
+            for pe_g in grupo:
+                if Calificacion.objects.filter(
+                    participante=pe_g.participante,
+                    criterio__cri_evento_fk=evento
+                ).exists():
+                    ref = pe_g.participante
+                    break
+
+            # si no hay nadie calificado aún, se mantiene el propio participante
+            if ref:
+                participante_referencia = ref
+
+        # -------- calificaciones sobre el referente (individual o grupo) --------
+        calificaciones = Calificacion.objects.select_related(
+            'criterio',
+            'evaluador__usuario'
+        ).filter(
+            participante=participante_referencia,
             criterio__cri_evento_fk=evento
         )
-        evaluadores = {c.evaluador_id for c in calificaciones}
-        num_evaluadores = len(evaluadores)
+
+        evaluadores_ids = {c.evaluador_id for c in calificaciones}
+        num_evaluadores = len(evaluadores_ids)
         criterios_evaluados = {c.criterio_id for c in calificaciones}
-        total_criterios = criterios.count()
+
         if num_evaluadores > 0:
-            total = sum([
-                (c.cal_valor * c.criterio.cri_peso) / 100 for c in calificaciones
-            ])
-            promedio_ponderado = round(total / num_evaluadores, 2)
+            total_aporte = sum(
+                (c.cal_valor * c.criterio.cri_peso) / 100
+                for c in calificaciones
+            )
+            promedio_ponderado = round(total_aporte / num_evaluadores, 2)
         else:
             promedio_ponderado = None
+
         participantes_info.append({
-            'participante': participante,
+            'participante': participante,          # el que se lista en la tabla
             'evaluados': len(criterios_evaluados),
             'total_criterios': total_criterios,
-            'calificaciones': calificaciones,
+            'calificaciones': calificaciones,      # siempre las del referente
             'promedio_ponderado': promedio_ponderado,
         })
+
     context = {
         'evento': evento,
         'criterios': criterios,
