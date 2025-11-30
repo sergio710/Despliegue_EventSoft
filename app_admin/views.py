@@ -286,19 +286,23 @@ def crear_codigo_invitacion_admin(request):
 @login_required
 @user_passes_test(es_superadmin, login_url='ver_eventos')
 def listar_eventos_estado(request, estado):
-    eventos = Evento.objects.filter(eve_estado=estado.lower()).select_related('eve_administrador_fk')
+    eventos = Evento.objects.filter(
+        eve_estado__iexact=estado  # ← en vez de eve_estado=estado.lower()
+    ).select_related('eve_administrador_fk')
+
     eventos_por_admin = defaultdict(list)
     for evento in eventos:
         admin = evento.eve_administrador_fk
         eventos_por_admin[admin].append(evento)
+
     vistos = request.session.get('eventos_vistos', {})
     vistos[estado] = [e.eve_id for e in eventos]
     request.session['eventos_vistos'] = vistos
+
     return render(request, 'listado_eventos.html', {
         'eventos_por_admin': eventos_por_admin.items(),
         'estado': estado.title(),
     })
-
 
 @login_required
 @user_passes_test(es_superadmin, login_url='ver_eventos')
