@@ -18,3 +18,4 @@ CairoSVG==2.8.2
 twilio==9.6.4
 dj-database-url==2.3.0
 psycopg[binary]==3.2.13
+itsdangerous==2.2.0
