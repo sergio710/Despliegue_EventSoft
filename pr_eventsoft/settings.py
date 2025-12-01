@@ -159,11 +159,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-# --- Cloudflare R2 para archivos media (solo en producción) ---
 USE_R2 = config("USE_R2", default=False, cast=bool)
 
 if USE_R2:
-    # Backend de almacenamiento para Cloudflare R2 (S3 compatible)
     DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
 
     AWS_ACCESS_KEY_ID = config("R2_ACCESS_KEY_ID")
@@ -171,15 +169,12 @@ if USE_R2:
     AWS_STORAGE_BUCKET_NAME = config("R2_BUCKET_NAME")
     AWS_S3_ENDPOINT_URL = config("R2_S3_ENDPOINT_URL")
 
-    # URL pública (Public Development URL) para servir los archivos
     R2_PUBLIC_BASE_URL = config("R2_PUBLIC_BASE_URL", default=AWS_S3_ENDPOINT_URL)
 
-    # R2 no requiere firmas de región como AWS
     AWS_S3_REGION_NAME = None
     AWS_S3_SIGNATURE_VERSION = "s3v4"
 
-    # URLs de media servidas desde la URL pública
-    MEDIA_URL = f"{R2_PUBLIC_BASE_URL}/{AWS_STORAGE_BUCKET_NAME}/"
+    MEDIA_URL = f"{R2_PUBLIC_BASE_URL}/"
 
 if USE_BREVO:
     # Producción: Brevo por API HTTP (Anymail)
