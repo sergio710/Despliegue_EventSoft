@@ -3,13 +3,12 @@ import os
 import pymysql
 from decouple import config
 import dj_database_url
+import cloudinary
 
 pymysql.install_as_MySQLdb()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-USE_R2 = config("USE_R2", default=False, cast=bool)
 
 USE_BREVO = config("USE_BREVO", default=False, cast=bool)
 
@@ -43,8 +42,20 @@ INSTALLED_APPS = [
     'app_admin',
     'app_usuarios',
     'anymail',
-    'storages',
 ]
+
+CLOUDINARY_URL = os.getenv("CLOUDINARY_URL")
+
+if CLOUDINARY_URL:
+    INSTALLED_APPS += [
+        "cloudinary",
+        "cloudinary_storage",
+    ]
+    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+    MEDIA_URL = "/media/"  # no importa mucho; Cloudinary genera sus URLs
+else:
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = BASE_DIR / "media"
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -158,27 +169,6 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
-
-if USE_R2:
-    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
-
-    AWS_ACCESS_KEY_ID = config("R2_ACCESS_KEY_ID")
-    AWS_SECRET_ACCESS_KEY = config("R2_SECRET_ACCESS_KEY")
-    AWS_STORAGE_BUCKET_NAME = config("R2_BUCKET_NAME")
-    AWS_S3_ENDPOINT_URL = config("R2_S3_ENDPOINT_URL")
-
-    AWS_S3_REGION_NAME = None
-    AWS_S3_SIGNATURE_VERSION = "s3v4"
-    AWS_S3_ADDRESSING_STYLE = "path"   # ← añade esto
-
-    AWS_DEFAULT_ACL = "public-read"    # ← y esto
-
-    MEDIA_URL = "/media/"
-else:
-    print("### USE_R2 DESACTIVADO, usando FileSystemStorage local ###")
 
 if USE_BREVO:
     # Producción: Brevo por API HTTP (Anymail)

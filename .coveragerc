@@ -3,14 +3,15 @@ source = .
 omit =
     */migrations/*
     */tests/*
-    */urls.py
-    */models.py
     */manage.py
     */middleware.py
     */permisos.py
     */asgi.py
     */settings_docker.py
     */wsgi.py
+    app_asistentes/test_views_asistente.py
+    app_administradores/test_views_administrador.py
+    app_admin/test_views_super_admin.py
     app_admin/__init__.py
     app_administradores/__init__.py
     app_areas/__init__.py
@@ -22,7 +23,6 @@ omit =
     pr_eventsoft/__init__.py
 
 include =
-    */test_*.py
 
 [report]
 show_missing = True
