@@ -162,6 +162,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 USE_R2 = config("USE_R2", default=False, cast=bool)
 
 if USE_R2:
+    print("### USE_R2 ACTIVADO, usando R2 como DEFAULT_FILE_STORAGE ###")
     DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
 
     AWS_ACCESS_KEY_ID = config("R2_ACCESS_KEY_ID")
@@ -175,6 +176,8 @@ if USE_R2:
     AWS_S3_SIGNATURE_VERSION = "s3v4"
 
     MEDIA_URL = f"{R2_PUBLIC_BASE_URL}/"
+else:
+    print("### USE_R2 DESACTIVADO, usando FileSystemStorage local ###")
 
 if USE_BREVO:
     # Producción: Brevo por API HTTP (Anymail)
