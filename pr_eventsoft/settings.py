@@ -9,6 +9,10 @@ pymysql.install_as_MySQLdb()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+USE_R2 = config("USE_R2", default=False, cast=bool)
+print("### DEBUG SETTINGS ACTIVO ###")
+print("### USE_R2 =", USE_R2, "###")
+
 USE_BREVO = config("USE_BREVO", default=False, cast=bool)
 
 # Quick-start development settings - unsuitable for production
@@ -159,7 +163,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-USE_R2 = config("USE_R2", default=False, cast=bool)
 
 if USE_R2:
     print("### USE_R2 ACTIVADO, usando R2 como DEFAULT_FILE_STORAGE ###")
