@@ -180,6 +180,7 @@ def crear_evento(request):
             eve_administrador_fk=administrador,
             eve_programacion=programacion
         )
+        print("DEBUG EVENTO FILE:", evento.eve_imagen.name, type(evento.eve_imagen.storage))
         invitacion.limite_eventos -= 1
         invitacion.save()
 
