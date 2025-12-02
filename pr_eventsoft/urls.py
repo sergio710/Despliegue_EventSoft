@@ -1,3 +1,4 @@
+# pr_eventsoft/urls.py
 from django.urls import path, include
 from django.conf.urls.static import static
 from django.conf import settings
@@ -12,8 +13,7 @@ urlpatterns = [
     path('admin-evento/', include('app_administradores.urls')),
     path('evento/', include('app_eventos.urls')),
     path('usuario/', include('app_usuarios.urls')),
-    
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# SIEMPRE agregar /media/, no solo en DEBUG
+urlpatterns += static(settings.MEDIA_URL, document_root=getattr(settings, "MEDIA_ROOT", None))
