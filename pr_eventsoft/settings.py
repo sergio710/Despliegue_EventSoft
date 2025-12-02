@@ -44,7 +44,7 @@ INSTALLED_APPS = [
     'anymail',
 ]
 
-CLOUDINARY_URL = os.getenv("CLOUDINARY_URL")
+CLOUDINARY_URL = config("CLOUDINARY_URL", default=None)
 
 if CLOUDINARY_URL:
     INSTALLED_APPS += [
@@ -52,10 +52,14 @@ if CLOUDINARY_URL:
         "cloudinary_storage",
     ]
     DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
-    MEDIA_URL = "/media/"  # no importa mucho; Cloudinary genera sus URLs
+    MEDIA_URL = "/media/"
 else:
     MEDIA_URL = "/media/"
     MEDIA_ROOT = BASE_DIR / "media"
+
+if not globals().get("DEFAULT_FILE_STORAGE"):
+    DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
