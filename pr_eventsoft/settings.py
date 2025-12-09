@@ -52,12 +52,10 @@ if CLOUDINARY_URL:
         "cloudinary_storage",
     ]
     DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
-    MEDIA_URL = "/media/"
+    MEDIA_URL = "/media/"  # o cualquier prefijo
 else:
     MEDIA_URL = "/media/"
     MEDIA_ROOT = BASE_DIR / "media"
-
-if not globals().get("DEFAULT_FILE_STORAGE"):
     DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
 
 
