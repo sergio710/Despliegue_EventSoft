@@ -85,22 +85,23 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'pr_eventsoft.wsgi.application'
 
-
 # Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
-# DATABASES
-if config("DATABASE_URL", default=None):
-    # Producción (Render, Postgres)
+# Si estamos en PythonAnywhere, usar su MySQL; si no, usar tu MySQL local.
+if os.environ.get("PA_ENV") == "pythonanywhere":
     DATABASES = {
-        "default": dj_database_url.config(
-            default=config("DATABASE_URL"),
-            conn_max_age=600,
-            conn_health_checks=True,
-        )
+        "default": {
+            "ENGINE": "django.db.backends.mysql",
+            "NAME": "correosdjango073$default",
+            "USER": "correosdjango073",
+            "PASSWORD": "TU_PASSWORD_MYSQL_PYTHONANYWHERE",
+            "HOST": "correosdjango073.mysql.pythonanywhere-services.com",
+            "PORT": "3306",
+            "OPTIONS": {
+                "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
+            },
+        }
     }
 else:
-    # Desarrollo local (tu MySQL en 3307)
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.mysql",
