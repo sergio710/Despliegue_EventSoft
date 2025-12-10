@@ -93,7 +93,7 @@ if os.environ.get("PA_ENV") == "pythonanywhere":
             "ENGINE": "django.db.backends.mysql",
             "NAME": "correosdjango073$default",
             "USER": "correosdjango073",
-            "PASSWORD": "TU_PASSWORD_MYSQL_PYTHONANYWHERE",
+            "PASSWORD": "pythonanywhere-mysql",
             "HOST": "correosdjango073.mysql.pythonanywhere-services.com",
             "PORT": "3306",
             "OPTIONS": {
