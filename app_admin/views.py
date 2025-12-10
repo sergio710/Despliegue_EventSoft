@@ -5,7 +5,7 @@ from app_eventos.models import Evento
 from app_areas.models import Categoria, Area
 from app_administradores.models import AdministradorEvento, CodigoInvitacionAdminEvento
 from django.core.mail import EmailMessage, send_mail
-from django.utils import timezone
+from datetime import datetime
 import uuid
 from app_usuarios.models import Rol, RolUsuario
 from collections import defaultdict
@@ -219,16 +219,18 @@ def crear_codigo_invitacion_admin(request):
     if request.method == 'POST':
         email_destino = request.POST.get('email_destino', '').strip()
         limite_eventos = request.POST.get('limite_eventos', '').strip()
-        fecha_expiracion = request.POST.get('fecha_expiracion', '').strip()
-        tiempo_limite_creacion = request.POST.get('tiempo_limite_creacion', '').strip()
+        # NO usamos strip() en las fechas para no convertir None en ''
+        fecha_expiracion = request.POST.get('fecha_expiracion')
+        tiempo_limite_creacion = request.POST.get('tiempo_limite_creacion')
 
         errores = []
         if not email_destino:
             errores.append('El correo de destino es obligatorio.')
         if not limite_eventos or not limite_eventos.isdigit() or int(limite_eventos) < 1:
             errores.append('El límite de eventos debe ser un número mayor a 0.')
-        if not fecha_expiracion:
+        if fecha_expiracion in (None, ''):
             errores.append('La fecha de expiración es obligatoria.')
+
         if errores:
             for e in errores:
                 messages.error(request, e)
@@ -241,16 +243,19 @@ def crear_codigo_invitacion_admin(request):
 
         # Generar código único
         codigo = str(uuid.uuid4()).replace('-', '')[:32]
+
+        # Parsear fecha_expiracion (formato de <input type="datetime-local">)
         try:
-            fecha_exp = timezone.datetime.fromisoformat(fecha_expiracion)
+            # ejemplo de valor: "2025-12-10T20:30"
+            fecha_exp = datetime.strptime(fecha_expiracion, "%Y-%m-%dT%H:%M")
         except Exception:
             messages.error(request, 'Formato de fecha de expiración inválido.')
             return render(request, 'crear_codigo_invitacion_admin.html')
 
         tiempo_limite = None
-        if tiempo_limite_creacion:
+        if tiempo_limite_creacion not in (None, ''):
             try:
-                tiempo_limite = timezone.datetime.fromisoformat(tiempo_limite_creacion)
+                tiempo_limite = datetime.strptime(tiempo_limite_creacion, "%Y-%m-%dT%H:%M")
             except Exception:
                 messages.error(request, 'Formato de fecha/hora para el tiempo límite de creación inválido.')
                 return render(request, 'crear_codigo_invitacion_admin.html')
