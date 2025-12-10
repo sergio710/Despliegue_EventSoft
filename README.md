@@ -1,5 +1,30 @@
 Despliegue en línea (PythonAnywhere)
 
+EventSoft – Gestión de eventos de divulgación SENA.
+
+EventSoft es una aplicación web desarrollada con Django para gestionar eventos de divulgación del SENA, cubriendo todo el ciclo de vida de un evento: creación, publicación, inscripciones, evaluación y certificación.​
+La plataforma maneja varios roles: Visitante Web, Asistente, Participante/Expositor, Evaluador, Administrador de Evento y Super Admin, cada uno con vistas y permisos específicos para registrar eventos, inscribirse, cargar documentación, evaluar proyectos y emitir certificados en PDF.​
+
+Roles y funcionalidades principales.
+
+Visitante Web: consulta eventos disponibles, filtra por criterios y se inscribe a eventos de interés.​
+
+Asistente: gestiona su inscripción, soportes de pago y descarga certificados de asistencia.​
+
+Participante/Expositor: registra proyectos, sube documentación y recibe calificaciones y certificados de participación o premiación.​
+
+Evaluador: gestiona instrumentos de evaluación, califica proyectos y consulta resultados y reportes.​
+
+Administrador de Evento: crea y configura eventos, administra inscripciones de asistentes, expositores y evaluadores, valida pagos, envía notificaciones y genera certificados.​
+
+Super Admin: gestiona códigos de invitación para administradores de evento, supervisa eventos activos y estadísticas generales.​
+
+Integrantes del equipo
+- Sergio Castaño Sánchez
+- Daniel Dávila
+- Jhonatan Escobar
+- Jenny Ríos
+
 La aplicación está desplegada en PythonAnywhere y accesible en:
 https://correosdjango073.pythonanywhere.com/
 
