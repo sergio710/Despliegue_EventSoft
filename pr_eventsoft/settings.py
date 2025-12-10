@@ -3,7 +3,6 @@ import os
 import pymysql
 from decouple import config
 import dj_database_url
-import cloudinary
 
 pymysql.install_as_MySQLdb()
 
@@ -44,20 +43,9 @@ INSTALLED_APPS = [
     'anymail',
 ]
 
-CLOUDINARY_URL = config("CLOUDINARY_URL", default=None)
-
-if CLOUDINARY_URL:
-    INSTALLED_APPS += [
-        "cloudinary",
-        "cloudinary_storage",
-    ]
-    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
-    MEDIA_URL = "/media/"  # o cualquier prefijo
-else:
-    MEDIA_URL = "/media/"
-    MEDIA_ROOT = BASE_DIR / "media"
-    DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
-
+# Media local (igual que en tu máquina)
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
